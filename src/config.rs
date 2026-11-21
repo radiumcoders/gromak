@@ -34,6 +34,8 @@ pub struct Config {
     pub decoration: Decoration,
     #[serde(default)]
     pub bar: Bar,
+    #[serde(default)]
+    pub launcher: Launcher,
     #[serde(default = "default_binds")]
     pub binds: BTreeMap<String, String>,
     #[serde(default = "default_rules")]
@@ -112,6 +114,45 @@ pub struct Bar {
     pub clock_24h: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Launcher {
+    /// An installed font family, or a path to a `.ttf`/`.otf` file (relative
+    /// paths are relative to the config directory).
+    pub emoji_font: String,
+}
+
+impl Default for Launcher {
+    fn default() -> Self {
+        Launcher { emoji_font: "Segoe UI Emoji".into() }
+    }
+}
+
+/// Where the emoji font comes from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FontSource {
+    Family(String),
+    File(PathBuf),
+}
+
+impl Launcher {
+    pub fn emoji_font_source(&self) -> FontSource {
+        let value = self.emoji_font.trim();
+        let lower = value.to_lowercase();
+        if value.contains(['/', '\\']) || lower.ends_with(".ttf") || lower.ends_with(".otf") {
+            let path = PathBuf::from(value);
+            let path = if path.is_absolute() {
+                path
+            } else {
+                config_path().parent().map(|dir| dir.join(&path)).unwrap_or(path)
+            };
+            FontSource::File(path)
+        } else {
+            FontSource::Family(value.to_string())
+        }
+    }
+}
+
 /// A window rule. All given matchers must match; a rule without any
 /// matcher matches nothing.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -172,6 +213,7 @@ impl Default for Config {
             theme: Theme::default(),
             decoration: Decoration::default(),
             bar: Bar::default(),
+            launcher: Launcher::default(),
             binds: default_binds(),
             rules: default_rules(),
         }
@@ -508,6 +550,19 @@ mod tests {
         assert_eq!(cfg.general.gaps_out, 10);
         assert_eq!(cfg.binds.len(), 1);
         assert_eq!(cfg.rules, default_rules());
+    }
+
+    #[test]
+    fn resolves_emoji_font_sources() {
+        let family = Launcher { emoji_font: "Segoe UI Emoji".into() };
+        assert_eq!(family.emoji_font_source(), FontSource::Family("Segoe UI Emoji".into()));
+        let relative = Launcher { emoji_font: "fonts/Twemoji.ttf".into() };
+        match relative.emoji_font_source() {
+            FontSource::File(p) => assert!(p.ends_with("fonts/Twemoji.ttf") && p.is_absolute()),
+            other => panic!("{other:?}"),
+        }
+        let absolute = Launcher { emoji_font: r"C:\Fonts\Noto.ttf".into() };
+        assert_eq!(absolute.emoji_font_source(), FontSource::File(PathBuf::from(r"C:\Fonts\Noto.ttf")));
     }
 
     #[test]

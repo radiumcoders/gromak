@@ -58,6 +58,14 @@ show_title = true
 show_clock = true
 clock_24h = true
 
+[launcher]
+# Font for the emoji picker (type ":" in the launcher): an installed family,
+# or a path to a .ttf/.otf file (relative to this folder). For Twemoji, the
+# emoji style used by Discord and Twitter, download Twemoji.Mozilla.ttf from
+# https://github.com/mozilla/twemoji-colr/releases into a "fonts" folder
+# next to this file and set: emoji_font = "fonts/Twemoji.Mozilla.ttf"
+emoji_font = "Segoe UI Emoji"
+
 # Window rules. A rule matches on any combination of `exe`, `class` and
 # `title` (case-insensitive; `title` matches a substring), and can make a
 # window `float`, `ignore` it entirely, or send it to a `workspace` (1-10).

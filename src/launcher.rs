@@ -22,6 +22,7 @@
 //! on Escape or as soon as it loses focus.
 
 use crate::calc;
+use crate::config::FontSource;
 use crate::emoji::{self, Emoji};
 use crate::fuzzy;
 use crate::gfx::{hbitmap_bitmap, label, rgba, rounded, Factories, Surface};
@@ -98,6 +99,7 @@ pub struct Style {
     pub font: String,
     pub font_px: f32,
     pub scale: f32,
+    pub emoji_font: FontSource,
 }
 
 /// Device-dependent resources.
@@ -754,9 +756,22 @@ unsafe fn create_gfx(f: &Factories, style: &Style) -> windows::core::Result<Gfx>
         item: crate::gfx::text_format(f, &style.font, 450, style.font_px * 1.12)?,
         strong: crate::gfx::text_format(f, &style.font, 600, style.font_px * 1.25)?,
         hint: crate::gfx::text_format(f, &style.font, 450, style.font_px * 0.95)?,
-        emoji: crate::gfx::text_format(f, "Segoe UI Emoji", 400, style.font_px * 1.6)?,
+        emoji: emoji_format(f, style)?,
         icons: HashMap::new(),
     })
+}
+
+/// The emoji text format: the configured font file or family, falling back
+/// to Segoe UI Emoji if a font file cannot be loaded.
+unsafe fn emoji_format(f: &Factories, style: &Style) -> windows::core::Result<IDWriteTextFormat> {
+    let px = style.font_px * 1.6;
+    match &style.emoji_font {
+        FontSource::File(path) => crate::gfx::text_format_from_file(f, path, 400, px).or_else(|e| {
+            warn!("launcher: could not load emoji font {}: {e}", path.display());
+            crate::gfx::text_format(f, "Segoe UI Emoji", 400, px)
+        }),
+        FontSource::Family(family) => crate::gfx::text_format(f, family, 400, px),
+    }
 }
 
 /// Extracts an app's icon from the shell at `px` pixels.

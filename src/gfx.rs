@@ -253,3 +253,35 @@ pub unsafe fn hbitmap_bitmap(f: &Factories, target: &ID2D1DCRenderTarget, hbitma
         .ok()?;
     d2d_bitmap(wic, target, &source.into())
 }
+
+/// Like [`text_format`], but for a font loaded from a `.ttf`/`.otf` file
+/// rather than an installed family (needs Windows 10 1703+).
+pub unsafe fn text_format_from_file(
+    f: &Factories,
+    path: &std::path::Path,
+    weight: i32,
+    px: f32,
+) -> windows::core::Result<IDWriteTextFormat> {
+    use windows::core::Interface;
+    use windows::Win32::Graphics::DirectWrite::IDWriteFactory5;
+    let factory: IDWriteFactory5 = f.dwrite.cast()?;
+    let builder = factory.CreateFontSetBuilder()?;
+    let file_path = wide(&path.to_string_lossy());
+    builder.AddFontFile(&f.dwrite.CreateFontFileReference(PCWSTR(file_path.as_ptr()), None)?)?;
+    let collection = factory.CreateFontCollectionFromFontSet(&builder.CreateFontSet()?)?;
+    let names = collection.GetFontFamily(0)?.GetFamilyNames()?;
+    let mut family = vec![0u16; names.GetStringLength(0)? as usize + 1];
+    names.GetString(0, &mut family)?;
+    let format = f.dwrite.CreateTextFormat(
+        PCWSTR(family.as_ptr()),
+        &collection,
+        DWRITE_FONT_WEIGHT(weight),
+        DWRITE_FONT_STYLE_NORMAL,
+        DWRITE_FONT_STRETCH_NORMAL,
+        px,
+        windows::core::w!("en-us"),
+    )?;
+    format.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
+    format.SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP)?;
+    Ok(format)
+}
