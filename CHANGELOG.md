@@ -1,0 +1,29 @@
+# Changelog
+
+All notable changes to this project are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
+[Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+### Added
+
+- Dwindle tiling layout with inner and outer gaps.
+- Ten global workspaces, one shown per monitor, with switching, moving
+  windows (with or without following), and relative navigation.
+- Hyprland-style dispatchers bound to configurable global hotkeys:
+  `exec`, `killactive`, `togglefloating`, `fullscreen`, `togglesplit`,
+  `movefocus`, `movewindow`, `resizeactive`, `cyclenext`/`cycleprev`,
+  `workspace`, `movetoworkspace(silent)`, `reload`, and `exit`.
+- Floating windows. Dialogs and fixed-size windows float automatically.
+- Drag a tiled window onto another to swap them, or onto another monitor to move it.
+- Per-monitor status bar with workspace pills, window title, and clock.
+  Click or scroll it to switch workspaces.
+- Windows 11 accent border on the focused window.
+- Window rules by exe, class, or title: float, ignore, or assign a workspace.
+- TOML configuration with commented defaults, validation, and live reload.
+- Multi-monitor and per-monitor DPI support.
+- Crash safety: hidden windows are persisted and restored on exit, logoff,
+  next start, or `tessera --restore`.
+- CLI: `--list-windows`, `--check-config`, `--config-path`,
+  `--default-config`, `--restore`, `--version`, and `--help`.
