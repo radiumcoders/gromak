@@ -21,11 +21,12 @@ use crate::mouse;
 use crate::theme::{self, Palette};
 use crate::win::{self, Hwnd};
 use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey, MOD_NOREPEAT};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    PostQuitMessage, EVENT_OBJECT_CLOAKED, EVENT_OBJECT_DESTROY, EVENT_OBJECT_HIDE, EVENT_OBJECT_NAMECHANGE,
-    EVENT_OBJECT_SHOW, EVENT_OBJECT_UNCLOAKED, EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MINIMIZEEND,
-    EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART,
+    KillTimer, PostQuitMessage, SetTimer, EVENT_OBJECT_CLOAKED, EVENT_OBJECT_DESTROY, EVENT_OBJECT_HIDE,
+    EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_SHOW, EVENT_OBJECT_UNCLOAKED, EVENT_SYSTEM_FOREGROUND,
+    EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART,
 };
 
 pub use hidden::{flush as flush_hidden, recover as recover_hidden, restore_all as restore_hidden};
@@ -82,6 +83,34 @@ struct Managed {
     floating: bool,
 }
 
+/// Frame interval of window animations (the system timer rounds it to its
+/// resolution, typically giving about 60-100 frames a second).
+const ANIM_FRAME_MS: u32 = 10;
+
+/// A window gliding from one rectangle to another.
+#[derive(Clone, Copy)]
+struct Anim {
+    h: Hwnd,
+    from: Rect,
+    to: Rect,
+    start: Instant,
+}
+
+impl Anim {
+    /// The rectangle now, on an ease-out-quint curve (fast start, soft landing).
+    fn current(&self, duration: Duration) -> Rect {
+        let t = (self.start.elapsed().as_secs_f32() / duration.as_secs_f32().max(0.001)).clamp(0.0, 1.0);
+        let e = 1.0 - (1.0 - t).powi(5);
+        let lerp = |a: i32, b: i32| a + ((b - a) as f32 * e).round() as i32;
+        Rect::new(
+            lerp(self.from.x, self.to.x),
+            lerp(self.from.y, self.to.y),
+            lerp(self.from.w, self.to.w),
+            lerp(self.from.h, self.to.h),
+        )
+    }
+}
+
 /// A mod+drag in progress.
 struct Drag {
     h: Hwnd,
@@ -114,6 +143,8 @@ pub struct Wm {
     /// its monitor because *tessera* put it there is not mistaken for an app
     /// that went fullscreen by itself.
     placed: std::cell::RefCell<HashMap<Hwnd, Rect>>,
+    /// Windows currently gliding to a new rectangle.
+    anims: std::cell::RefCell<Vec<Anim>>,
     active_border: u32,
     inactive_border: u32,
     /// The current colours (from the wallpaper, accent or config).
@@ -139,6 +170,7 @@ impl Wm {
             move_start: HashMap::new(),
             drag: None,
             placed: std::cell::RefCell::new(HashMap::new()),
+            anims: std::cell::RefCell::new(Vec::new()),
             active_border: 0,
             inactive_border: 0,
             palette: theme::palette_from_seed([0x8a, 0xad, 0xf4], false),
@@ -180,6 +212,7 @@ impl Wm {
         hidden::restore_all();
         for &h in self.windows.keys() {
             win::set_border_color(h, win::BORDER_DEFAULT);
+            win::set_transitions_disabled(h, false);
         }
         self.monitors.clear();
     }
@@ -560,6 +593,8 @@ impl Wm {
         if self.cfg.decoration.borders {
             win::set_border_color(h, self.inactive_border);
         }
+        // No DWM scale-and-fade every time a workspace switch hides or shows it.
+        win::set_transitions_disabled(h, true);
         if self.monitor_of_ws(ws).is_none() {
             hidden::hide(h);
         }
@@ -585,9 +620,11 @@ impl Wm {
         }
         if win::is_window(h) {
             win::set_border_color(h, win::BORDER_DEFAULT);
+            win::set_transitions_disabled(h, false);
         }
         self.move_start.remove(&h);
         self.placed.borrow_mut().remove(&h);
+        self.anims.borrow_mut().retain(|a| a.h != h);
         info!("unmanage {h:#x}");
         Some(m.ws)
     }
@@ -628,30 +665,67 @@ impl Wm {
         let workspace = &self.workspaces[ws];
         let fullscreen = workspace.fullscreen;
         let monitor = self.monitors[mi].info.rect;
-        let mut placed = self.placed.borrow_mut();
         for (h, r) in workspace.tree.layout(area, gap) {
             if fullscreen.is_some_and(|(f, _)| f == h) {
                 continue;
             }
             // Leave apps that went fullscreen by themselves (browser F11)
             // alone, but not windows tessera itself made monitor-sized.
-            if win::is_app_fullscreen(h) && placed.get(&h) != Some(&monitor) {
+            let placed_by_us = self.placed.borrow().get(&h) == Some(&monitor);
+            if win::is_app_fullscreen(h) && !placed_by_us {
                 continue;
             }
-            win::set_window_rect(h, r);
-            placed.insert(h, r);
+            self.place(h, r);
         }
         if let Some((h, mode)) = fullscreen {
             let r = match mode {
                 FsMode::Fullscreen => monitor,
                 FsMode::Maximized => area,
             };
-            win::set_window_rect(h, r);
-            placed.insert(h, r);
+            self.place(h, r);
             win::raise(h);
         }
         if let Some(bar) = &self.monitors[mi].bar {
             bar.set_visible(!matches!(fullscreen, Some((_, FsMode::Fullscreen))));
+        }
+    }
+
+    /// Puts a window at `to`: glides there when animations are on, starting
+    /// from where it is now (or where it is mid-animation).
+    fn place(&self, h: Hwnd, to: Rect) {
+        let anim = &self.cfg.animations;
+        let mut anims = self.anims.borrow_mut();
+        let running = anims.iter().position(|a| a.h == h);
+        if let Some(i) = running {
+            if anims[i].to == to {
+                return; // already heading there
+            }
+        }
+        let duration = Duration::from_millis(anim.duration_ms as u64);
+        let from = match running {
+            Some(i) => anims.remove(i).current(duration),
+            None => self.placed.borrow().get(&h).copied().unwrap_or_else(|| win::window_rect(h)),
+        };
+        self.placed.borrow_mut().insert(h, to);
+        if !anim.enabled || duration.is_zero() || from == to {
+            win::set_window_rect(h, to);
+            return;
+        }
+        anims.push(Anim { h, from, to, start: Instant::now() });
+        unsafe { SetTimer(self.ctrl as _, crate::ANIM_TIMER, ANIM_FRAME_MS, None) };
+    }
+
+    /// Advances every running window animation by one frame.
+    pub fn on_anim_tick(&mut self) {
+        let duration = Duration::from_millis(self.cfg.animations.duration_ms as u64);
+        let mut anims = self.anims.borrow_mut();
+        anims.retain(|a| {
+            let done = a.start.elapsed() >= duration;
+            win::set_window_rect(a.h, if done { a.to } else { a.current(duration) });
+            !done
+        });
+        if anims.is_empty() {
+            unsafe { KillTimer(self.ctrl as _, crate::ANIM_TIMER) };
         }
     }
 
@@ -784,6 +858,20 @@ impl Wm {
             if win::monitor_of_window(f) != handle {
                 let r = win::window_rect(f);
                 win::set_window_rect(f, area.centered(r.w.min(area.w), r.h.min(area.h)));
+            }
+        }
+        // Slide in: park the incoming tiles slightly to the side (further
+        // right when moving to a higher workspace) while they are hidden;
+        // layout_ws then glides them into place once they are shown.
+        if self.cfg.animations.enabled && self.cfg.animations.workspace_slide {
+            let (area, gap) = (self.tiling_area(mi), self.gap(mi));
+            let direction = if target % WORKSPACES > old % WORKSPACES { 1 } else { -1 };
+            let offset = (area.w as f32 * 0.06) as i32 * direction;
+            for (h, r) in self.workspaces[target].tree.layout(area, gap) {
+                let start = Rect { x: r.x + offset, ..r };
+                self.anims.borrow_mut().retain(|a| a.h != h);
+                win::set_window_rect_now(h, start);
+                self.placed.borrow_mut().insert(h, start);
             }
         }
         // Lay out while still hidden, show the new windows, then hide the old.

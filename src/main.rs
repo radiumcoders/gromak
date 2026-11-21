@@ -48,6 +48,10 @@ pub const WM_APP_THEME: u32 = WM_APP + 6;
 pub const WM_APP_MOUSE: u32 = WM_APP + 7;
 /// A mod+drag started, moved or ended: `wparam` = phase, `lparam` = kind.
 pub const WM_APP_DRAG: u32 = WM_APP + 8;
+/// A window-animation frame is due.
+pub const WM_APP_ANIM: u32 = WM_APP + 9;
+/// Timer on the control window that drives window animations.
+pub const ANIM_TIMER: usize = 2;
 
 /// How often the control window checks whether the theme inputs changed
 /// (slideshows and some wallpaper tools do not broadcast a change).
@@ -225,6 +229,10 @@ unsafe extern "system" fn ctrl_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
             PostMessageW(hwnd, WM_APP_THEME, 0, 0);
             0
         }
+        WM_TIMER if wp == ANIM_TIMER => {
+            PostMessageW(hwnd, WM_APP_ANIM, 0, 0);
+            0
+        }
         WM_ENDSESSION if wp != 0 => {
             // Logging off or shutting down: make sure no window stays hidden.
             wm::restore_hidden();
@@ -235,7 +243,7 @@ unsafe extern "system" fn ctrl_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
         // dispatched one here, put it back for the main loop instead of
         // dropping it.
         WM_HOTKEY | WM_APP_HOTKEY | WM_APP_EVENT | WM_APP_DISPLAY | WM_APP_BAR | WM_APP_THEME | WM_APP_MOUSE
-        | WM_APP_DRAG | WM_APP_QUIT => {
+        | WM_APP_DRAG | WM_APP_ANIM | WM_APP_QUIT => {
             PostMessageW(hwnd, msg, wp, lp);
             0
         }
@@ -348,6 +356,7 @@ fn run_message_loop(wm: &mut wm::Wm) {
                 | WM_APP_THEME
                 | WM_APP_MOUSE
                 | WM_APP_DRAG
+                | WM_APP_ANIM
         );
         if !handled {
             unsafe {
@@ -368,6 +377,7 @@ fn run_message_loop(wm: &mut wm::Wm) {
                 mouse::handled();
                 wm.on_mouse_move();
             }
+            WM_APP_ANIM => wm.on_anim_tick(),
             WM_APP_DRAG => {
                 if m.wParam == mouse::DRAG_PHASE_MOVE {
                     mouse::drag_handled();

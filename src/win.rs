@@ -295,6 +295,17 @@ pub fn is_app_fullscreen(h: Hwnd) -> bool {
 
 /// Moves and resizes `h` so that its *visible* frame matches `r`.
 pub fn set_window_rect(h: Hwnd, r: Rect) {
+    place_window(h, r, false);
+}
+
+/// Like [`set_window_rect`], but waits for the window to move (unless it is
+/// hung), so a following show reveals it already in place.
+pub fn set_window_rect_now(h: Hwnd, r: Rect) {
+    let hung = unsafe { IsHungAppWindow(hw(h)) != 0 };
+    place_window(h, r, !hung);
+}
+
+fn place_window(h: Hwnd, r: Rect, sync: bool) {
     unsafe {
         if IsZoomed(hw(h)) != 0 {
             show_window(h, SW_SHOWNOACTIVATE);
@@ -304,7 +315,10 @@ pub fn set_window_rect(h: Hwnd, r: Rect) {
             Some(f) => (f.left - outer.left, f.top - outer.top, outer.right - f.right, outer.bottom - f.bottom),
             None => (0, 0, 0, 0),
         };
-        let flags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_ASYNCWINDOWPOS;
+        let mut flags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
+        if !sync {
+            flags |= SWP_ASYNCWINDOWPOS;
+        }
         let target = to_win_rect(r);
         // Crossing to a monitor with a different DPI makes the window rescale
         // itself after the first move; a second call corrects the size.
@@ -723,5 +737,22 @@ pub fn replay_masked_key_up(vk: u16) {
             input.Anonymous.ki.dwExtraInfo = INJECTED_MARK;
         }
         SendInput(inputs.len() as u32, inputs.as_ptr(), size_of::<INPUT>() as i32);
+    }
+}
+
+/// Turns DWM's show/hide transitions (the scale-and-fade when a window
+/// appears or disappears) off or back on for a window. tessera hides and
+/// shows windows on every workspace switch, so the transitions would play
+/// constantly.
+pub fn set_transitions_disabled(h: Hwnd, disabled: bool) {
+    const DWMWA_TRANSITIONS_FORCEDISABLED: u32 = 3;
+    let value: BOOL = disabled as BOOL;
+    unsafe {
+        DwmSetWindowAttribute(
+            hw(h),
+            DWMWA_TRANSITIONS_FORCEDISABLED,
+            &value as *const BOOL as *const c_void,
+            size_of::<BOOL>() as u32,
+        );
     }
 }

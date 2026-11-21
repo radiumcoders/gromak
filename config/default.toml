@@ -67,6 +67,14 @@ show_title = true
 show_clock = true
 clock_24h = true
 
+[animations]
+# Windows glide to their new place when the layout changes, and switching
+# workspaces slides the new one in. Turn off for instant changes.
+enabled = true
+# Length of an animation in milliseconds.
+duration_ms = 220
+workspace_slide = true
+
 [launcher]
 # Font for the emoji picker (type ":" in the launcher): an installed family,
 # or a path to a .ttf/.otf file (relative to this folder). For Twemoji, the

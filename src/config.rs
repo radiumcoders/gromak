@@ -36,6 +36,8 @@ pub struct Config {
     pub bar: Bar,
     #[serde(default)]
     pub launcher: Launcher,
+    #[serde(default)]
+    pub animations: Animations,
     #[serde(default = "default_binds")]
     pub binds: BTreeMap<String, String>,
     #[serde(default = "default_rules")]
@@ -139,6 +141,23 @@ pub struct Launcher {
     pub emoji_font: String,
     /// Which orc.pictures variant the GIF picker shows first.
     pub gif_style: GifStyle,
+}
+
+/// Window animations.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Animations {
+    pub enabled: bool,
+    /// Length of a window move/resize animation in milliseconds.
+    pub duration_ms: u32,
+    /// Slide the new workspace in when switching.
+    pub workspace_slide: bool,
+}
+
+impl Default for Animations {
+    fn default() -> Self {
+        Animations { enabled: true, duration_ms: 220, workspace_slide: true }
+    }
 }
 
 /// orc.pictures offers every GIF in two styles.
@@ -262,6 +281,7 @@ impl Default for Config {
             decoration: Decoration::default(),
             bar: Bar::default(),
             launcher: Launcher::default(),
+            animations: Animations::default(),
             binds: default_binds(),
             rules: default_rules(),
         }
