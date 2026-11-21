@@ -22,6 +22,14 @@ static ENABLED: AtomicBool = AtomicBool::new(false);
 /// A `WM_APP_MOUSE` is queued and not yet handled.
 static PENDING: AtomicBool = AtomicBool::new(false);
 static THREAD_ID: AtomicU32 = AtomicU32::new(0);
+/// Pointer position from the latest mouse-move event.
+static LAST_X: AtomicI32 = AtomicI32::new(0);
+static LAST_Y: AtomicI32 = AtomicI32::new(0);
+
+/// The pointer position reported by the most recent mouse-move event.
+pub fn last_pos() -> (i32, i32) {
+    (LAST_X.load(Ordering::Relaxed), LAST_Y.load(Ordering::Relaxed))
+}
 
 /// A wheel binding: modifiers, `VK_WHEEL_UP` or `VK_WHEEL_DOWN`, and the id
 /// posted with `WM_APP_HOTKEY`.
@@ -88,6 +96,11 @@ pub fn stop() {
 unsafe extern "system" fn hook_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     if code == HC_ACTION as i32 && wp as u32 == WM_MOUSEWHEEL && handle_wheel(lp) {
         return 1;
+    }
+    if code == HC_ACTION as i32 && wp as u32 == WM_MOUSEMOVE {
+        let info = &*(lp as *const MSLLHOOKSTRUCT);
+        LAST_X.store(info.pt.x, Ordering::Relaxed);
+        LAST_Y.store(info.pt.y, Ordering::Relaxed);
     }
     if code == HC_ACTION as i32
         && wp as u32 == WM_MOUSEMOVE

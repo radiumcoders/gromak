@@ -346,13 +346,25 @@ pub fn hide(h: Hwnd) {
 }
 
 /// Gives keyboard focus to `h`, working around foreground-lock rules.
-pub fn focus(h: Hwnd) {
+pub fn focus(h: Hwnd) -> bool {
+    let is_foreground = || unsafe {
+        let fg = GetForegroundWindow();
+        fg == hw(h) || GetAncestor(fg, GA_ROOT) == hw(h)
+    };
     unsafe {
         if IsIconic(hw(h)) != 0 {
             ShowWindow(hw(h), SW_RESTORE);
         }
-        if SetForegroundWindow(hw(h)) != 0 {
-            return;
+        if SetForegroundWindow(hw(h)) != 0 && is_foreground() {
+            return true;
+        }
+        // Windows refuses to hand the foreground to another app unless we
+        // own the last input event. A (masked) Alt tap counts as input and
+        // lifts the foreground lock; the unassigned 0xE8 key in between keeps
+        // the focused app from opening its menu bar on the Alt release.
+        send_alt_tap();
+        if SetForegroundWindow(hw(h)) != 0 && is_foreground() {
+            return true;
         }
         let fg_thread = GetWindowThreadProcessId(GetForegroundWindow(), null_mut());
         let me = GetCurrentThreadId();
@@ -362,6 +374,34 @@ pub fn focus(h: Hwnd) {
             SetForegroundWindow(hw(h));
             AttachThreadInput(me, fg_thread, 0);
         }
+        is_foreground()
+    }
+}
+
+/// Alt down, 0xE8 down/up, Alt up.
+fn send_alt_tap() {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_MENU;
+    unsafe {
+        let mut inputs: [INPUT; 4] = zeroed();
+        let keys = [(VK_MENU, 0), (0xE8, 0), (0xE8, KEYEVENTF_KEYUP), (VK_MENU, KEYEVENTF_KEYUP)];
+        for (input, (vk, flags)) in inputs.iter_mut().zip(keys) {
+            input.r#type = INPUT_KEYBOARD;
+            input.Anonymous.ki.wVk = vk;
+            input.Anonymous.ki.dwFlags = flags;
+        }
+        SendInput(inputs.len() as u32, inputs.as_ptr(), size_of::<INPUT>() as i32);
+    }
+}
+
+/// Raises `h` above other normal windows, synchronously (so it really ends
+/// up above a window that was just activated). Skips hung windows.
+pub fn raise_now(h: Hwnd) {
+    unsafe {
+        if IsHungAppWindow(hw(h)) != 0 {
+            raise(h);
+            return;
+        }
+        SetWindowPos(hw(h), HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
 }
 

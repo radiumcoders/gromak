@@ -578,8 +578,30 @@ impl Wm {
     }
 
     fn focus_window(&mut self, h: Hwnd) {
-        win::focus(h);
-        self.set_focused(Some(h));
+        if win::focus(h) {
+            self.set_focused(Some(h));
+            self.raise_floating_above(h);
+        } else {
+            // Never let the bar and borders claim a focus Windows refused:
+            // follow whatever really has the keyboard.
+            warn!("could not focus {h:#x}");
+            let fg = win::foreground();
+            self.set_focused(self.windows.contains_key(&fg).then_some(fg));
+        }
+    }
+
+    /// After a tiled window got focus (which raises it), puts the
+    /// workspace's floating windows back on top, unless the workspace has a
+    /// fullscreen window that must stay above everything.
+    fn raise_floating_above(&self, h: Hwnd) {
+        let Some(m) = self.windows.get(&h) else { return };
+        let workspace = &self.workspaces[m.ws];
+        if m.floating || workspace.fullscreen.is_some() {
+            return;
+        }
+        for &f in &workspace.floating {
+            win::raise_now(f);
+        }
     }
 
     /// Focuses the workspace's last focused window, or the desktop if empty.
@@ -652,8 +674,10 @@ impl Wm {
         for h in self.workspaces[target].windows() {
             hidden::show(h);
         }
-        for &f in &self.workspaces[target].floating {
-            win::raise(f);
+        if self.workspaces[target].fullscreen.is_none() {
+            for &f in &self.workspaces[target].floating {
+                win::raise(f);
+            }
         }
         for h in self.workspaces[old].windows() {
             hidden::hide(h);
@@ -739,23 +763,27 @@ impl Wm {
         if !self.cfg.general.focus_follows_mouse || win::mouse_button_down() || launcher::is_open() {
             return;
         }
-        let (x, y) = win::cursor_pos();
+        // The position from the hook event itself: GetCursorPos can still
+        // report the previous position while the event is being delivered.
+        let (x, y) = mouse::last_pos();
+        // The monitor under the pointer is the active one (workspace keys act
+        // on it), even when the pointer is over empty space or the bar.
+        let mi = self.monitor_index(win::monitor_at(x, y));
+        let monitor_changed = mi != self.active_monitor;
+        self.active_monitor = mi;
         let h = win::window_at(x, y);
-        if h == 0 || Some(h) == self.focused {
-            return;
+        let target = self
+            .windows
+            .get(&h)
+            .filter(|m| self.monitor_of_ws(m.ws).is_some())
+            .map(|_| h)
+            .filter(|&h| Some(h) != self.focused);
+        if let Some(h) = target {
+            self.focus_window(h);
         }
-        let Some((ws, floating)) = self.windows.get(&h).map(|m| (m.ws, m.floating)) else { return };
-        if self.monitor_of_ws(ws).is_none() {
-            return;
+        if target.is_some() || monitor_changed {
+            self.refresh_bars();
         }
-        self.focus_window(h);
-        if !floating {
-            // Focusing raises the window; keep floating windows on top.
-            for &f in &self.workspaces[ws].floating {
-                win::raise(f);
-            }
-        }
-        self.refresh_bars();
     }
 
     /// Handles clicks and scrolls on a bar.
