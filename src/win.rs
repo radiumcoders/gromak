@@ -333,20 +333,26 @@ pub fn raise(h: Hwnd) {
     }
 }
 
-/// Shows a window without activating it.
-pub fn show(h: Hwnd) {
+/// `ShowWindow`, synchronous so that visibility checks made right after are
+/// accurate, but asynchronous for hung windows so they cannot block tessera.
+fn show_window(h: Hwnd, cmd: SHOW_WINDOW_CMD) {
     unsafe {
         if IsHungAppWindow(hw(h)) != 0 {
-            ShowWindowAsync(hw(h), SW_SHOWNA);
+            ShowWindowAsync(hw(h), cmd);
         } else {
-            ShowWindow(hw(h), SW_SHOWNA);
+            ShowWindow(hw(h), cmd);
         }
     }
 }
 
-/// Hides a window (asynchronously, so a hung app cannot block tessera).
+/// Shows a window without activating it.
+pub fn show(h: Hwnd) {
+    show_window(h, SW_SHOWNA);
+}
+
+/// Hides a window.
 pub fn hide(h: Hwnd) {
-    unsafe { ShowWindowAsync(hw(h), SW_HIDE) };
+    show_window(h, SW_HIDE);
 }
 
 /// Gives keyboard focus to `h`, working around foreground-lock rules.
