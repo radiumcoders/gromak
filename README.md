@@ -3,22 +3,13 @@
 **A minimal, keyboard-driven tiling window manager for Windows, inspired by Hyprland.**
 
 gromak arranges your windows into a clean dwindle layout with gaps, gives you
-ten workspaces you can flip between instantly, and stays out of the way: one
-floating bar per monitor, a coloured border on the focused window, and nothing else.
+ten workspaces per monitor that you can flip between instantly, and stays out of
+the way: one floating bar per monitor, a coloured border on the focused window,
+and nothing else.
 
-```
-╭─────────╮       ╭─────────────────────────╮       ╭────────────────────╮
-│ (1) 2 3 │       │ ▣ ~/projects — Terminal │       │ Sat 21 Nov • 21:27 │
-╰─────────╯       ╰─────────────────────────╯       ╰────────────────────╯
-╭──────────────────────────────╮ ╭──────────────────────────────╮
-│                              │ │                              │
-│          terminal            │ │           browser            │
-│                              │ │                              │
-│                              │ ╰──────────────────────────────╯
-│                              │ ╭──────────────────────────────╮
-│                              │ │            editor            │
-╰──────────────────────────────╯ ╰──────────────────────────────╯
-```
+![gromak tiling a terminal, Calculator and Paint](docs/screenshots/tiling.png)
+
+![The floating island bar](docs/screenshots/bar.png)
 
 > **Status:** early (v0.1). It is usable day to day, but expect rough edges.
 > If gromak ever exits unexpectedly, run `gromak --restore` to bring back
@@ -201,6 +192,8 @@ stray keypress can't end your session.
 
 #### Calculator
 
+![The launcher's calculator](docs/screenshots/launcher-calc.png)
+
 Type maths and the answer appears as the first result. Enter copies it to
 the clipboard. Start with `=` to use only the calculator.
 
@@ -217,6 +210,8 @@ implicit multiplication (`2pi`), `pi`, `tau` and `e`, and the functions
 
 #### Emoji picker
 
+![The emoji picker](docs/screenshots/launcher-emoji.png)
+
 Type `:` followed by a name, such as `:fire` or `:thumbs`, to search
 emoji. Enter types the emoji into the window you were using, then restores
 your clipboard. To use a different emoji style, point `[launcher]
@@ -232,6 +227,8 @@ Download `Twemoji.Mozilla.ttf` from
 [mozilla/twemoji-colr](https://github.com/mozilla/twemoji-colr/releases).
 
 #### GIF picker (orc.pictures)
+
+![The orc.pictures GIF picker](docs/screenshots/launcher-gifs.png)
 
 Type `gif ` followed by a search, such as `gif angry` or `gif fire`, to
 browse the [orc.pictures](https://orc.pictures) reaction-GIF catalog, with
