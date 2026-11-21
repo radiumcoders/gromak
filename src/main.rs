@@ -16,6 +16,7 @@ mod keyboard;
 mod launcher;
 mod layout;
 mod mouse;
+mod orc;
 mod theme;
 mod win;
 mod wm;
