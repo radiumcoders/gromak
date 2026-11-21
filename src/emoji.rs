@@ -360,9 +360,19 @@ pub static EMOJI: &[Emoji] = emoji![
 /// Emoji matching `query` (by name or keyword), best first.
 pub fn search(query: &str) -> Vec<(&'static Emoji, fuzzy::Match)> {
     let query = query.trim();
+    let lower = query.to_lowercase();
+    // Emoji names are short phrases, so loose subsequence matches ("fire" in
+    // "face with raised eyebrow") are noise: require the query to appear in
+    // the name or to start one of its words or keywords.
+    let relevant = |e: &Emoji| {
+        lower.is_empty()
+            || e.name.contains(&lower)
+            || e.name.split_whitespace().chain(e.keywords.split_whitespace()).any(|w| w.starts_with(&lower))
+    };
     let mut results: Vec<(i32, usize, &'static Emoji, fuzzy::Match)> = EMOJI
         .iter()
         .enumerate()
+        .filter(|(_, e)| relevant(e))
         .filter_map(|(i, e)| {
             let by_name = fuzzy::score(query, e.name);
             // Keywords count too (an exact keyword strongly), but only name
@@ -396,6 +406,8 @@ mod tests {
         assert_eq!(search("thumbs up")[0].0.glyph, "👍");
         assert_eq!(search("lol")[0].0.glyph, "😂");
         assert_eq!(search("rocket")[0].0.glyph, "🚀");
+        // No loose subsequence matches.
+        assert!(search("fire").iter().all(|(e, _)| e.name.contains("fire") || e.keywords.contains("fire")));
     }
 
     #[test]

@@ -22,6 +22,7 @@
 //! on Escape or as soon as it loses focus.
 
 use crate::calc;
+use crate::emoji::{self, Emoji};
 use crate::fuzzy;
 use crate::gfx::{hbitmap_bitmap, label, rgba, rounded, Factories, Surface};
 use crate::layout::Rect;
@@ -108,6 +109,7 @@ struct Gfx {
     item: IDWriteTextFormat,
     strong: IDWriteTextFormat,
     hint: IDWriteTextFormat,
+    emoji: IDWriteTextFormat,
     /// App icons by target (None = no icon available).
     icons: HashMap<String, Option<ID2D1Bitmap>>,
 }
@@ -115,6 +117,7 @@ struct Gfx {
 enum Row {
     /// A calculation and its formatted result.
     Calc(String),
+    Emoji(&'static Emoji, fuzzy::Match),
     App(usize, fuzzy::Match),
     Run(String),
     Message(&'static str),
@@ -164,6 +167,8 @@ enum Action {
     },
     /// Copy text to the clipboard and close.
     Copy(String),
+    /// Type text into the previously focused window (via the clipboard).
+    Type(String),
 }
 
 // ----- app index ------------------------------------------------------------
@@ -429,6 +434,23 @@ fn run(action: Action) {
                 info!("launcher: copied {text}");
             }
         }
+        Action::Type(text) => {
+            close(true);
+            // Paste through the clipboard, then put back what was there.
+            let previous = win::clipboard_text();
+            if !win::set_clipboard_text(&text) {
+                return;
+            }
+            std::thread::spawn(move || {
+                // Give the previous window a moment to take focus back.
+                std::thread::sleep(Duration::from_millis(120));
+                win::send_paste();
+                std::thread::sleep(Duration::from_millis(400));
+                if let Some(previous) = previous {
+                    win::set_clipboard_text(&previous);
+                }
+            });
+        }
     }
 }
 
@@ -440,6 +462,14 @@ impl Launcher {
         self.scroll = 0;
         let query = self.query.trim();
         let calculation = calc::evaluate_query(query).map(|v| Row::Calc(calc::format(v)));
+        // ":..." is the emoji picker.
+        if let Some(rest) = query.strip_prefix(':') {
+            self.rows = emoji::search(rest).into_iter().take(MAX_RESULTS).map(|(e, m)| Row::Emoji(e, m)).collect();
+            if self.rows.is_empty() {
+                self.rows.push(Row::Message("No emoji found"));
+            }
+            return;
+        }
         // "=..." is calculator-only.
         if query.starts_with('=') {
             self.rows = vec![calculation.unwrap_or(Row::Message("Not a valid calculation yet"))];
@@ -489,6 +519,7 @@ impl Launcher {
             Some(Row::App(i, _)) => Action::Launch { app: Some(self.apps[*i].clone()), command: None },
             Some(Row::Run(cmd)) => Action::Launch { app: None, command: Some(cmd.clone()) },
             Some(Row::Calc(value)) => Action::Copy(value.clone()),
+            Some(Row::Emoji(e, _)) => Action::Type(e.glyph.to_string()),
             _ => Action::Nothing,
         }
     }
@@ -723,6 +754,7 @@ unsafe fn create_gfx(f: &Factories, style: &Style) -> windows::core::Result<Gfx>
         item: crate::gfx::text_format(f, &style.font, 450, style.font_px * 1.12)?,
         strong: crate::gfx::text_format(f, &style.font, 600, style.font_px * 1.25)?,
         hint: crate::gfx::text_format(f, &style.font, 450, style.font_px * 0.95)?,
+        emoji: crate::gfx::text_format(f, "Segoe UI Emoji", 400, style.font_px * 1.6)?,
         icons: HashMap::new(),
     })
 }
@@ -844,7 +876,9 @@ impl Launcher {
         let mut caret_x = text_x;
         let query_origin = Vector2 { X: text_x, Y: m + pad };
         if self.query.is_empty() {
-            if let Some(placeholder) = label(f, &gfx.query, "Search apps, or type maths like 2+2", text_w, search_h) {
+            if let Some(placeholder) =
+                label(f, &gfx.query, "Search apps  ·  2+2 to calculate  ·  : for emoji", text_w, search_h)
+            {
                 brush.SetColor(&rgba(p.foreground, 0.32));
                 target.DrawTextLayout(query_origin, &placeholder.layout, brush, D2D1_DRAW_TEXT_OPTIONS_NONE);
             }
@@ -949,6 +983,33 @@ impl Launcher {
                         gfx.target.DrawTextLayout(
                             Vector2 { X: right - hint.width, Y: y0 },
                             &hint.layout,
+                            &gfx.brush,
+                            D2D1_DRAW_TEXT_OPTIONS_NONE,
+                        );
+                    }
+                }
+                Row::Emoji(e, matched) => {
+                    if let Some(glyph) = label(f, &gfx.emoji, e.glyph, icon_size * 2.0, row_h) {
+                        let x = icon_x + (icon_size - glyph.width) / 2.0;
+                        gfx.brush.SetColor(&rgba(p.foreground, 1.0));
+                        gfx.target.DrawTextLayout(
+                            Vector2 { X: x, Y: y0 },
+                            &glyph.layout,
+                            &gfx.brush,
+                            D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT,
+                        );
+                    }
+                    if let Some(name) = label(f, &gfx.item, e.name, name_w, row_h) {
+                        let accent_effect: IUnknown = gfx.accent.cast()?;
+                        for start in utf16_offsets(e.name, &matched.positions) {
+                            let range = DWRITE_TEXT_RANGE { startPosition: start, length: 1 };
+                            name.layout.SetFontWeight(DWRITE_FONT_WEIGHT(600), range)?;
+                            name.layout.SetDrawingEffect(&accent_effect, range)?;
+                        }
+                        gfx.brush.SetColor(&rgba(p.foreground, text_alpha));
+                        gfx.target.DrawTextLayout(
+                            Vector2 { X: name_x, Y: y0 },
+                            &name.layout,
                             &gfx.brush,
                             D2D1_DRAW_TEXT_OPTIONS_NONE,
                         );

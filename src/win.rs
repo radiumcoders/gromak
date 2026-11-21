@@ -608,3 +608,18 @@ pub fn set_clipboard_text(text: &str) -> bool {
         ok
     }
 }
+
+/// Presses Ctrl+V in the focused window.
+pub fn send_paste() {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_CONTROL;
+    unsafe {
+        let mut inputs: [INPUT; 4] = zeroed();
+        let keys = [(VK_CONTROL, 0), (b'V' as u16, 0), (b'V' as u16, KEYEVENTF_KEYUP), (VK_CONTROL, KEYEVENTF_KEYUP)];
+        for (input, (vk, flags)) in inputs.iter_mut().zip(keys) {
+            input.r#type = INPUT_KEYBOARD;
+            input.Anonymous.ki.wVk = vk;
+            input.Anonymous.ki.dwFlags = flags;
+        }
+        SendInput(inputs.len() as u32, inputs.as_ptr(), size_of::<INPUT>() as i32);
+    }
+}
