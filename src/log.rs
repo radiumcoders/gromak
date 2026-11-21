@@ -6,10 +6,18 @@
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 static FILE: Mutex<Option<File>> = Mutex::new(None);
+static STDERR: AtomicBool = AtomicBool::new(true);
+
+/// Stops echoing to stderr. Must be called after detaching from the
+/// console: the stale stderr handle value can be reused by the log file.
+pub fn disable_stderr() {
+    STDERR.store(false, Ordering::Relaxed);
+}
 
 /// `%LOCALAPPDATA%\tessera`, where runtime state and logs live.
 pub fn data_dir() -> PathBuf {
@@ -32,7 +40,9 @@ pub fn write(level: &str, args: std::fmt::Arguments) {
     let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let (h, m, s) = ((secs / 3600) % 24, (secs / 60) % 60, secs % 60);
     let line = format!("{h:02}:{m:02}:{s:02}Z {level:<5} {args}\n");
-    let _ = std::io::stderr().write_all(line.as_bytes());
+    if STDERR.load(Ordering::Relaxed) {
+        let _ = std::io::stderr().write_all(line.as_bytes());
+    }
     if let Some(file) = FILE.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
         let _ = file.write_all(line.as_bytes());
     }

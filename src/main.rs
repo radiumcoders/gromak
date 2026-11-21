@@ -153,6 +153,7 @@ fn detach_own_console() {
     let mut pids = [0u32; 2];
     if unsafe { GetConsoleProcessList(pids.as_mut_ptr(), pids.len() as u32) } == 1 {
         unsafe { FreeConsole() };
+        log::disable_stderr();
     }
 }
 
