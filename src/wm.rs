@@ -976,6 +976,14 @@ impl Wm {
         {
             return;
         }
+        // Never take focus away from a window tessera does not manage: system
+        // overlays (the Win+Shift+S snipping overlay, which is see-through to
+        // hit testing and closes when it loses focus; the Start menu; UAC)
+        // and other apps' popups must keep it while the pointer moves.
+        let foreground = win::foreground();
+        if !self.windows.contains_key(&foreground) && !win::is_shell_surface(foreground) {
+            return;
+        }
         // The position from the hook event itself: GetCursorPos can still
         // report the previous position while the event is being delivered.
         let (x, y) = mouse::last_pos();

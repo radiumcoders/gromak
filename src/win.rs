@@ -756,3 +756,9 @@ pub fn set_transitions_disabled(h: Hwnd, disabled: bool) {
         );
     }
 }
+
+/// The desktop or taskbar (or no window at all): places focus can rest
+/// without belonging to an application.
+pub fn is_shell_surface(h: Hwnd) -> bool {
+    h == 0 || matches!(class(h).as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd")
+}
