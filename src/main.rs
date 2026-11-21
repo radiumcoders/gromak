@@ -89,6 +89,7 @@ USAGE:
     gromak --check-config   validate the config file
     gromak --config-path    print where the config file lives
     gromak --default-config print the default config
+    gromak --quit           ask the running gromak to exit cleanly
     gromak --restore        undo what a crashed session left behind
                             (hidden windows, Windows Snap turned off);
                             refuses while gromak runs (add --force)
@@ -189,6 +190,7 @@ fn run_cli(args: &[String]) -> i32 {
                 println!("{:<28} {:<36} {}", info.exe, info.class, info.title);
             }
         }
+        "--quit" => return quit_running(),
         "--restore" => {
             // While gromak runs, its windows on other workspaces are hidden on
             // purpose; showing them behind its back would scramble its state.
@@ -205,6 +207,32 @@ fn run_cli(args: &[String]) -> i32 {
         }
     }
     0
+}
+
+/// `gromak --quit`: asks the running instance to exit the way `exit` does
+/// (restoring windows and settings) and waits for it. Used by the installer
+/// before upgrading or uninstalling.
+fn quit_running() -> i32 {
+    let class = win::wide("gromak_ctrl");
+    let ctrl = unsafe { FindWindowW(class.as_ptr(), null()) };
+    if ctrl.is_null() {
+        println!("gromak is not running");
+        return 0;
+    }
+    if unsafe { PostMessageW(ctrl, WM_APP_QUIT, 0, 0) } == 0 {
+        // UIPI: an elevated gromak ignores messages from an unelevated one.
+        eprintln!("could not reach gromak (is it running as administrator?)");
+        return 1;
+    }
+    for _ in 0..100 {
+        if unsafe { IsWindow(ctrl) } == 0 {
+            println!("gromak exited");
+            return 0;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    eprintln!("gromak did not exit within 10 seconds");
+    1
 }
 
 /// When started from Explorer or autostart, Windows creates a console

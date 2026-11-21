@@ -347,7 +347,9 @@ gromak --list-windows   print exe, class and title of tileable windows
 gromak --check-config   validate the config file
 gromak --config-path    print where the config file lives
 gromak --default-config print the default config
-gromak --restore        show windows a crashed session left hidden
+gromak --quit           exit the running gromak cleanly (like mod+shift+e)
+gromak --restore        undo what a crashed session left behind
+                        (hidden windows, Windows Snap turned off)
 gromak --version
 gromak --help
 ```
