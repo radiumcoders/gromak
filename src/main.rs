@@ -79,13 +79,14 @@ fn main() {
     }
     detach_own_console();
 
-    log::init(&log::data_dir().join("tessera.log"));
-    std::panic::set_hook(Box::new(|info| error!("{info}")));
-
+    // Check for a running instance before opening (and truncating) the log,
+    // so a second launch does not wipe the running instance's log.
     if !acquire_single_instance() {
         error!("tessera is already running");
         return;
     }
+    log::init(&log::data_dir().join("tessera.log"));
+    std::panic::set_hook(Box::new(|info| error!("{info}")));
     win::set_dpi_awareness();
     info!("tessera {} starting", env!("CARGO_PKG_VERSION"));
 
