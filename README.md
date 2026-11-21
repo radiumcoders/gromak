@@ -37,6 +37,9 @@ floating bar per monitor, a coloured border on the focused window, and nothing e
 - **Focus follows mouse (optional).** Focus moves to whatever window the pointer
   is over, and the pointer follows when you move focus with the keyboard, like
   Hyprland's `follow_mouse`. Turn it on with `focus_follows_mouse = true`.
+- **App launcher.** `mod+Space` opens a rofi-style search panel with every
+  installed app (desktop and Store), real icons, fuzzy matching and
+  most-used-first ranking. If nothing matches, Enter runs what you typed.
 - **Floating island bar.** Translucent, rounded islands for workspaces, the
   focused window's icon and title, and the date and time. The space between
   them is see-through and click-through.
@@ -85,6 +88,7 @@ moving focus right.
 | Keys | Action |
 | --- | --- |
 | `mod+Enter` | Open a terminal (`general.terminal`, Windows Terminal by default) |
+| `mod+Space` | Open the app launcher |
 | `mod+Q` | Close the focused window |
 | `mod+H/J/K/L`, `mod+←↓↑→` | Move focus (crosses monitors at the edge) |
 | `mod+Shift+H/J/K/L`, `mod+Shift+←↓↑→` | Swap with neighbour (or move to the next monitor) |
@@ -155,6 +159,25 @@ The full reference, including every dispatcher, is in
 [`config/default.toml`](config/default.toml). You can also print it with
 `tessera --default-config`.
 
+### App launcher
+
+`mod+Space` opens the launcher on the focused monitor. Start typing to
+filter. Matching is fuzzy, so `vsc` finds Visual Studio Code and `term`
+finds Terminal, and the matched letters are highlighted.
+
+| Key | Action |
+| --- | --- |
+| `↑` `↓`, `Tab` `Shift+Tab`, `Ctrl+J` `Ctrl+K` | Move the selection |
+| `PgUp` `PgDn` | Move a page |
+| `Enter` | Open the selected app (or run the text as a command if nothing matches) |
+| `Esc` | Close |
+| `Ctrl+Backspace` | Delete a word |
+| `Ctrl+V` | Paste |
+
+The list is the same as Start's "All apps" (`shell:AppsFolder`), including
+Microsoft Store apps. Apps you launch often move to the top. The launch
+counts are kept in `%LOCALAPPDATA%	esseraauncher_history.txt`.
+
 ### Theme
 
 By default, tessera picks its colours from your wallpaper. It finds the most
@@ -193,6 +216,7 @@ you could write a rule for.
 | Dispatcher | Effect |
 | --- | --- |
 | `exec <command>` | Run a command (`$terminal` expands to `general.terminal`) |
+| `launcher` | Open the app launcher (or close it if open) |
 | `killactive` | Close the focused window |
 | `togglefloating` | Float or tile the focused window |
 | `fullscreen [0\|1]` | `0`: cover the monitor. `1`: fill the tiling area |

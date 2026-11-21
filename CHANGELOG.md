@@ -24,6 +24,8 @@ All notable changes to this project are documented here. The format follows
 - `mod = "win"` support: Win-key bindings go through a low-level keyboard hook,
   so they override Windows' reserved shortcuts without opening the Start menu.
 - `hide_taskbar` keeps the Windows taskbar hidden, even when Explorer re-shows it.
+- App launcher (`launcher` dispatcher, `mod+Space`): fuzzy search over all
+  installed apps with icons, usage ranking and a run-a-command fallback.
 - Focus follows mouse (`general.focus_follows_mouse`), with the pointer
   following keyboard focus changes.
 - Wallpaper-driven theming: colours are derived from the desktop wallpaper

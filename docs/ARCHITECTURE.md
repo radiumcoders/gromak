@@ -25,6 +25,9 @@ ordinary `SetWindowPos` / `ShowWindow` calls.
 | `src/bar.rs` | The per-monitor floating bar: a layered window drawn with Direct2D and DirectWrite. |
 | `src/keyboard.rs` | The low-level keyboard hook thread for Win-key bindings. |
 | `src/mouse.rs` | The low-level mouse hook thread that reports pointer movement for focus follows mouse. |
+| `src/launcher.rs` | The app launcher: app index, search panel window and launching. |
+| `src/fuzzy.rs` | Fuzzy matching and scoring for the launcher. Pure, unit-tested. |
+| `src/gfx.rs` | Shared Direct2D / DirectWrite / WIC plumbing for the bar and the launcher. |
 | `src/theme.rs` | Derives colour palettes from the wallpaper or accent colour, and detects changes. |
 | `src/win.rs` | Thin wrappers over the Win32 / DWM APIs, plus the "is this a normal app window?" heuristic. |
 | `src/log.rs` | File and stderr logger. |
@@ -135,6 +138,24 @@ happens while a mouse button is held. Keyboard-driven focus changes move the
 pointer to the centre of the newly focused window's *target* rectangle,
 because window moves are asynchronous. `SetCursorPos` does not go through the
 input stream, so this pointer move never triggers the hook itself.
+
+## The launcher
+
+The app list comes from enumerating `FOLDERID_AppsFolder` with `IShellItem` and
+`IEnumShellItems`. It runs on a background COM thread at startup, and again
+when the launcher opens if the list is older than 30 seconds. Each entry keeps
+its display name and its parsing name, which is an AppUserModelID or a path.
+Launching runs `ShellExecuteW("shell:AppsFolder<parsing name>")`, which
+works for both desktop and Store apps. Icons are fetched lazily through
+`IShellItemImageFactory`, converted with WIC to keep their alpha channel, and
+cached per render target.
+
+The panel is a layered window like the bar, but it takes keyboard focus.
+Input handlers work out an `Action` while they hold the launcher state, and
+only carry it out (show, hide, launch) after releasing it. Those calls
+re-enter the window procedure synchronously, through `WM_ACTIVATE` for
+example. If the state happens to be busy, input messages are re-posted
+instead of dropped.
 
 ## Theming
 
