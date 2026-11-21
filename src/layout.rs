@@ -339,8 +339,13 @@ pub fn neighbor(rects: &[(isize, Rect)], from: isize, dir: Dir) -> Option<isize>
                     Dir::Up => (cur.y - r.bottom(), (cx - ox).abs(), overlap(cur.x, cur.right(), r.x, r.right())),
                     Dir::Down => (r.y - cur.bottom(), (cx - ox).abs(), overlap(cur.x, cur.right(), r.x, r.right())),
                 };
-                let penalty: i64 = if ov > 0 { 0 } else { 1_000_000 };
-                Some((penalty + edge.max(0) as i64 * 4 + perp as i64, *id))
+                // Only windows that line up with this one on the other axis
+                // count; otherwise moving "down" from a full-height tile would
+                // pick a window off to the side instead of crossing monitors.
+                if ov <= 0 {
+                    return None;
+                }
+                Some((edge.max(0) as i64 * 4 + perp as i64, *id))
             })
             .min()
             .map(|(_, id)| id)
@@ -471,6 +476,22 @@ mod tests {
         assert_eq!(neighbor(&l, 3, Dir::Up), Some(2));
         assert_eq!(neighbor(&l, 1, Dir::Left), None);
         assert_eq!(neighbor(&l, 2, Dir::Right), None);
+    }
+
+    #[test]
+    fn neighbor_ignores_windows_that_do_not_line_up() {
+        // A full-height left column with three windows stacked on the right:
+        // there is nothing *below* the left column.
+        let rects = [
+            (1, Rect::new(0, 0, 500, 600)),
+            (2, Rect::new(500, 0, 500, 200)),
+            (3, Rect::new(500, 200, 500, 200)),
+            (4, Rect::new(500, 400, 500, 200)),
+        ];
+        assert_eq!(neighbor(&rects, 1, Dir::Down), None);
+        assert_eq!(neighbor(&rects, 1, Dir::Up), None);
+        assert_eq!(neighbor(&rects, 4, Dir::Left), Some(1));
+        assert_eq!(neighbor(&rects, 2, Dir::Down), Some(3));
     }
 
     #[test]
