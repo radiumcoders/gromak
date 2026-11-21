@@ -441,10 +441,12 @@ pub fn top_level_windows() -> Vec<Hwnd> {
 
 /// The taskbar windows of every monitor.
 pub fn taskbars() -> Vec<Hwnd> {
-    top_level_windows()
-        .into_iter()
-        .filter(|&h| matches!(class(h).as_str(), "Shell_TrayWnd" | "Shell_SecondaryTrayWnd"))
-        .collect()
+    top_level_windows().into_iter().filter(|&h| is_taskbar(h)).collect()
+}
+
+/// Whether `h` is the primary or a secondary Windows taskbar.
+pub fn is_taskbar(h: Hwnd) -> bool {
+    matches!(class(h).as_str(), "Shell_TrayWnd" | "Shell_SecondaryTrayWnd")
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -856,6 +856,12 @@ impl Wm {
     }
 
     fn on_show(&mut self, h: Hwnd) {
+        if self.cfg.general.hide_taskbar && win::is_taskbar(h) && win::is_visible(h) {
+            // Explorer re-shows the taskbar now and then (Start menu, explorer
+            // restarts, display changes); keep it hidden.
+            hidden::hide(h);
+            return;
+        }
         let Some(ws) = self.windows.get(&h).map(|m| m.ws) else {
             self.manage_and_layout(h);
             return;
