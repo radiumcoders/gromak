@@ -18,6 +18,7 @@ use crate::keyboard::{self, HookBind};
 use crate::launcher;
 use crate::layout::{self, Dir, Dwindle, Rect};
 use crate::mouse;
+use crate::popup;
 use crate::theme::{self, Palette};
 use crate::win::{self, Hwnd};
 use std::collections::{HashMap, HashSet};
@@ -981,6 +982,7 @@ impl Wm {
         if !self.cfg.general.focus_follows_mouse
             || win::mouse_button_down()
             || launcher::is_open()
+            || popup::is_open()
             || mouse::drag_kind() != mouse::DRAG_NONE
         {
             return;
@@ -1128,6 +1130,19 @@ impl Wm {
     pub fn on_bar(&mut self, kind: usize, value: isize) {
         let (x, y) = win::cursor_pos();
         self.active_monitor = self.monitor_index(win::monitor_at(x, y));
+        if kind == crate::BAR_CALENDAR || kind == crate::BAR_CLOCK {
+            let anchor = ((value & 0xFFFF_FFFF) as u32 as i32, (value >> 32) as i32);
+            let mi = self.active_monitor;
+            let style = popup::Style {
+                palette: self.palette,
+                font: self.cfg.bar.font_source(),
+                font_px: self.cfg.bar.font_size as f32 * self.monitors[mi].info.scale,
+                scale: self.monitors[mi].info.scale,
+            };
+            let which = if kind == crate::BAR_CALENDAR { popup::Kind::Calendar } else { popup::Kind::Clock };
+            popup::toggle(which, anchor, style);
+            return;
+        }
         let target = match kind {
             crate::BAR_WORKSPACE => WsTarget::Index(value.max(0) as usize),
             _ => WsTarget::Relative(value.signum() as i32),

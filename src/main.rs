@@ -17,6 +17,7 @@ mod launcher;
 mod layout;
 mod mouse;
 mod orc;
+mod popup;
 mod power;
 mod theme;
 mod win;
@@ -62,6 +63,10 @@ const THEME_TIMER: usize = 1;
 pub const BAR_WORKSPACE: usize = 0;
 /// `lparam` is +1 / -1 from scrolling over the bar.
 pub const BAR_SCROLL: usize = 1;
+/// The date was clicked: open the calendar. `lparam` = anchor (y << 32 | x).
+pub const BAR_CALENDAR: usize = 2;
+/// The time was clicked: open the clock. `lparam` as for `BAR_CALENDAR`.
+pub const BAR_CLOCK: usize = 3;
 
 /// The hidden control window that receives hotkeys and internal messages.
 static CTRL_HWND: AtomicIsize = AtomicIsize::new(0);
@@ -122,6 +127,7 @@ fn main() {
     gfx::init();
     bar::init();
     launcher::init();
+    popup::init();
     let ctrl = create_ctrl_window();
     if ctrl == 0 {
         error!("could not create the control window");

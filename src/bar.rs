@@ -158,6 +158,9 @@ struct Model {
     tracking_mouse: bool,
     /// Clickable x-ranges of the workspace pills: (left, right, index).
     hits: Vec<(f32, f32, usize)>,
+    /// Clickable x-ranges of the date and the time (they open popups).
+    date_hit: (f32, f32),
+    time_hit: (f32, f32),
     /// Last clock text drawn, to skip redundant redraws.
     clock: String,
     /// The sliding active-workspace highlight.
@@ -225,6 +228,8 @@ impl Bar {
             hover: None,
             tracking_mouse: false,
             hits: Vec::new(),
+            date_hit: (0.0, 0.0),
+            time_hit: (0.0, 0.0),
             clock: String::new(),
             indicator: None,
             animating: false,
@@ -345,8 +350,25 @@ unsafe extern "system" fn bar_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
         }
         WM_LBUTTONDOWN => {
             let x = (lp & 0xFFFF) as i16 as f32;
-            if let Some(Some(index)) = with_model(key, |m| hit(&m.hits, x)) {
-                crate::post_to_ctrl(crate::WM_APP_BAR, crate::BAR_WORKSPACE, index as isize);
+            let clicked = with_model(key, |m| {
+                let anchor = || {
+                    // The popup hangs from the bar's bottom-right corner (screen).
+                    let (ax, ay) = (m.rect.right(), m.rect.bottom());
+                    ((ay as isize) << 32) | (ax as u32 as isize)
+                };
+                let within = |(l, r): (f32, f32)| x >= l && x < r;
+                if let Some(index) = hit(&m.hits, x) {
+                    Some((crate::BAR_WORKSPACE, index as isize))
+                } else if within(m.date_hit) {
+                    Some((crate::BAR_CALENDAR, anchor()))
+                } else if within(m.time_hit) {
+                    Some((crate::BAR_CLOCK, anchor()))
+                } else {
+                    None
+                }
+            });
+            if let Some(Some((kind, value))) = clicked {
+                crate::post_to_ctrl(crate::WM_APP_BAR, kind, value);
             }
             0
         }
@@ -516,10 +538,12 @@ unsafe fn draw(f: &Factories, model: &mut Model) -> windows::core::Result<()> {
             island(right_l, w);
             let mut cx = right_l + inner;
             text(&date, cx, rgba(style.foreground, 0.6));
+            model.date_hit = (right_l, cx + date.width + sep / 2.0);
             cx += date.width + sep;
             fill(&rounded(cx, h / 2.0 - dot / 2.0, cx + dot, h / 2.0 + dot / 2.0, dot / 2.0), rgba(style.accent, 0.9));
             cx += dot + sep;
             text(&clock, cx, rgba(style.foreground, 1.0));
+            model.time_hit = (cx - sep / 2.0, w);
         }
         model.clock = time;
     }
