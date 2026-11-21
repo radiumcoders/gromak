@@ -75,6 +75,8 @@ pub struct General {
     pub modifier: String,
     pub terminal: String,
     pub hide_taskbar: bool,
+    /// Focus the window under the mouse pointer as it moves.
+    pub focus_follows_mouse: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -121,7 +123,14 @@ pub struct Rule {
 
 impl Default for General {
     fn default() -> Self {
-        General { gaps_in: 5, gaps_out: 10, modifier: "alt".into(), terminal: "wt.exe".into(), hide_taskbar: false }
+        General {
+            gaps_in: 5,
+            gaps_out: 10,
+            modifier: "alt".into(),
+            terminal: "wt.exe".into(),
+            hide_taskbar: false,
+            focus_follows_mouse: false,
+        }
     }
 }
 

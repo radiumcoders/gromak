@@ -10,6 +10,7 @@ mod bar;
 mod config;
 mod keyboard;
 mod layout;
+mod mouse;
 mod theme;
 mod win;
 mod wm;
@@ -36,6 +37,8 @@ pub const WM_APP_QUIT: u32 = WM_APP + 4;
 pub const WM_APP_HOTKEY: u32 = WM_APP + 5;
 /// The wallpaper, accent colour or light/dark mode may have changed.
 pub const WM_APP_THEME: u32 = WM_APP + 6;
+/// The mouse moved (coalesced; see `mouse.rs`).
+pub const WM_APP_MOUSE: u32 = WM_APP + 7;
 
 /// How often the control window checks whether the theme inputs changed
 /// (slideshows and some wallpaper tools do not broadcast a change).
@@ -112,6 +115,7 @@ fn main() {
     unsafe { SetTimer(ctrl as HWND, THEME_TIMER, THEME_CHECK_MS, None) };
     let hooks = install_hooks();
     keyboard::start();
+    mouse::start();
     unsafe { SetConsoleCtrlHandler(Some(console_handler), 1) };
 
     let mut wm = wm::Wm::new(cfg, ctrl);
@@ -126,6 +130,7 @@ fn main() {
     info!("shutting down");
     wm.shutdown();
     keyboard::stop();
+    mouse::stop();
     for hook in hooks {
         unsafe { UnhookWinEvent(hook) };
     }
@@ -304,8 +309,10 @@ fn run_message_loop(wm: &mut wm::Wm) {
             break;
         }
         let m = msg;
-        let handled =
-            matches!(m.message, WM_HOTKEY | WM_APP_HOTKEY | WM_APP_EVENT | WM_APP_DISPLAY | WM_APP_BAR | WM_APP_THEME);
+        let handled = matches!(
+            m.message,
+            WM_HOTKEY | WM_APP_HOTKEY | WM_APP_EVENT | WM_APP_DISPLAY | WM_APP_BAR | WM_APP_THEME | WM_APP_MOUSE
+        );
         if !handled {
             unsafe {
                 TranslateMessage(&msg);
@@ -321,6 +328,10 @@ fn run_message_loop(wm: &mut wm::Wm) {
             WM_APP_DISPLAY => wm.on_display_change(),
             WM_APP_BAR => wm.on_bar(m.wParam, m.lParam),
             WM_APP_THEME => wm.on_theme_check(),
+            WM_APP_MOUSE => {
+                mouse::handled();
+                wm.on_mouse_move();
+            }
             _ => {}
         }));
         if result.is_err() {

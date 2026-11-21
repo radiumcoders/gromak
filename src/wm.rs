@@ -15,6 +15,7 @@ use crate::config::{
 };
 use crate::keyboard::{self, HookBind};
 use crate::layout::{self, Dir, Dwindle, Rect};
+use crate::mouse;
 use crate::theme::{self, Palette};
 use crate::win::{self, Hwnd};
 use std::collections::{HashMap, HashSet};
@@ -139,6 +140,7 @@ impl Wm {
         }
         self.layout_all();
         self.register_hotkeys();
+        mouse::set_enabled(self.cfg.general.focus_follows_mouse);
         self.refresh_bars();
         info!(
             "managing {} windows on {} monitor(s){}",
@@ -291,6 +293,7 @@ impl Wm {
                 self.apply_taskbar();
                 self.detect_monitors();
                 self.register_hotkeys();
+                mouse::set_enabled(self.cfg.general.focus_follows_mouse);
                 self.apply_borders();
                 self.layout_all();
                 self.refresh_bars();
@@ -687,7 +690,63 @@ impl Wm {
         if !from_hook && bind.hotkey.mods & (MOD_ALT | MOD_WIN) != 0 {
             win::mask_menu_key();
         }
+        let moves_focus = matches!(
+            bind.command,
+            Command::MoveFocus(_)
+                | Command::MoveWindow(_)
+                | Command::Cycle(_)
+                | Command::Workspace(_)
+                | Command::MoveToWorkspace { .. }
+                | Command::ToggleFloating
+        );
         self.dispatch(bind.command);
+        if moves_focus {
+            if let Some(h) = self.focused {
+                self.warp_pointer_to(h);
+            }
+        }
+    }
+
+    /// With focus follows mouse, moves the pointer into `h` (unless it is
+    /// already there) so that keyboard focus changes stick: otherwise the
+    /// next nudge of the mouse would focus whatever is under the pointer.
+    fn warp_pointer_to(&self, h: Hwnd) {
+        if !self.cfg.general.focus_follows_mouse {
+            return;
+        }
+        let Some(ws) = self.windows.get(&h).map(|m| m.ws) else { return };
+        // Use the layout's target rectangle: window moves are asynchronous,
+        // so the window's current rectangle may still be the old one.
+        let Some(r) = self.ws_rects(ws).into_iter().find(|(w, _)| *w == h).map(|(_, r)| r) else { return };
+        let (x, y) = win::cursor_pos();
+        if !r.contains(x, y) {
+            let (cx, cy) = r.center();
+            win::set_cursor_pos(cx, cy);
+        }
+    }
+
+    /// The pointer moved: focus the managed window under it.
+    pub fn on_mouse_move(&mut self) {
+        if !self.cfg.general.focus_follows_mouse || win::mouse_button_down() {
+            return;
+        }
+        let (x, y) = win::cursor_pos();
+        let h = win::window_at(x, y);
+        if h == 0 || Some(h) == self.focused {
+            return;
+        }
+        let Some((ws, floating)) = self.windows.get(&h).map(|m| (m.ws, m.floating)) else { return };
+        if self.monitor_of_ws(ws).is_none() {
+            return;
+        }
+        self.focus_window(h);
+        if !floating {
+            // Focusing raises the window; keep floating windows on top.
+            for &f in &self.workspaces[ws].floating {
+                win::raise(f);
+            }
+        }
+        self.refresh_bars();
     }
 
     /// Handles clicks and scrolls on a bar.
@@ -928,6 +987,7 @@ impl Wm {
             self.layout_ws(ws);
             if win::foreground() == h {
                 self.set_focused(Some(h));
+                self.warp_pointer_to(h);
             }
         }
     }

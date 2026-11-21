@@ -518,3 +518,24 @@ pub fn local_time() -> SYSTEMTIME {
     unsafe { GetLocalTime(&mut t) };
     t
 }
+
+/// The top-level window under a screen point, or 0.
+pub fn window_at(x: i32, y: i32) -> Hwnd {
+    unsafe {
+        let h = WindowFromPoint(POINT { x, y });
+        if h.is_null() {
+            return 0;
+        }
+        GetAncestor(h, GA_ROOT) as Hwnd
+    }
+}
+
+/// Whether any mouse button is currently held down.
+pub fn mouse_button_down() -> bool {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_MBUTTON, VK_RBUTTON};
+    [VK_LBUTTON, VK_RBUTTON, VK_MBUTTON].iter().any(|&vk| unsafe { GetAsyncKeyState(vk as i32) } as u16 & 0x8000 != 0)
+}
+
+pub fn set_cursor_pos(x: i32, y: i32) {
+    unsafe { SetCursorPos(x, y) };
+}

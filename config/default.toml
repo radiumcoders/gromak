@@ -17,6 +17,9 @@ mod = "alt"
 terminal = "wt.exe"
 # Hide the Windows taskbar while tessera runs. It is restored on exit.
 hide_taskbar = false
+# Focus the window under the mouse pointer, like Hyprland's follow_mouse.
+# The pointer also jumps to windows you focus with the keyboard.
+focus_follows_mouse = false
 
 [theme]
 # Where colours come from:
