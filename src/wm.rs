@@ -146,6 +146,8 @@ pub struct Wm {
     placed: std::cell::RefCell<HashMap<Hwnd, Rect>>,
     /// Windows currently gliding to a new rectangle.
     anims: std::cell::RefCell<Vec<Anim>>,
+    /// Cached window icons for the bars.
+    icons: std::cell::RefCell<HashMap<Hwnd, isize>>,
     active_border: u32,
     inactive_border: u32,
     /// The current colours (from the wallpaper, accent or config).
@@ -172,6 +174,7 @@ impl Wm {
             drag: None,
             placed: std::cell::RefCell::new(HashMap::new()),
             anims: std::cell::RefCell::new(Vec::new()),
+            icons: std::cell::RefCell::new(HashMap::new()),
             active_border: 0,
             inactive_border: 0,
             palette: theme::palette_from_seed([0x8a, 0xad, 0xf4], false),
@@ -635,6 +638,7 @@ impl Wm {
         self.move_start.remove(&h);
         self.placed.borrow_mut().remove(&h);
         self.anims.borrow_mut().retain(|a| a.h != h);
+        self.icons.borrow_mut().remove(&h);
         info!("unmanage {h:#x}");
         Some(m.ws)
     }
@@ -823,9 +827,14 @@ impl Wm {
         }
     }
 
+    /// A window's small icon, cached (asking a window for its icon is a
+    /// cross-process call).
+    fn icon_of(&self, h: Hwnd) -> isize {
+        *self.icons.borrow_mut().entry(h).or_insert_with(|| win::window_icon(h))
+    }
+
     fn refresh_bars(&self) {
         let focused_ws = self.focused.and_then(|f| self.windows.get(&f)).map(|m| m.ws);
-        let title = self.focused.map(win::title).unwrap_or_default();
         for (i, mon) in self.monitors.iter().enumerate() {
             let Some(bar) = &mon.bar else { continue };
             // This monitor's own workspaces, numbered 1-10 on its bar.
@@ -835,12 +844,21 @@ impl Wm {
                 .filter(|&(_, w)| w == mon.ws || !self.workspaces[w].is_empty())
                 .map(|(n, w)| WsItem { index: n, active: w == mon.ws, occupied: !self.workspaces[w].is_empty() })
                 .collect();
-            bar.set_state(BarState {
-                workspaces,
-                title: if focused_ws == Some(mon.ws) { title.clone() } else { String::new() },
-                icon: if focused_ws == Some(mon.ws) { self.focused_icon } else { 0 },
-                focused_monitor: i == self.active_monitor,
-            });
+            // The focused window if it is here; otherwise the window last focused
+            // on this monitor's workspace, so the title does not vanish when
+            // focus moves to the other monitor or the desktop.
+            let workspace = &self.workspaces[mon.ws];
+            let shown = if focused_ws == Some(mon.ws) {
+                self.focused
+            } else {
+                workspace.last_focus.filter(|h| workspace.windows().contains(h))
+            };
+            let (title, icon) = match shown {
+                Some(h) if Some(h) == self.focused => (win::title(h), self.focused_icon),
+                Some(h) => (win::title(h), self.icon_of(h)),
+                None => (String::new(), 0),
+            };
+            bar.set_state(BarState { workspaces, title, icon, focused_monitor: i == self.active_monitor });
         }
     }
 
