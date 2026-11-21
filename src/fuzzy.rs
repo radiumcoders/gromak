@@ -32,12 +32,24 @@ pub fn score(query: &str, candidate: &str) -> Option<Match> {
     let chars: Vec<char> = candidate.chars().collect();
     let lower: Vec<char> = chars.iter().map(|c| c.to_lowercase().next().unwrap_or(*c)).collect();
 
+    // latest[k]: the last position query[k] can take while query[k+1..] can
+    // still be matched after it. Picks beyond it would make the match fail.
+    let mut latest = vec![0usize; query.len()];
+    let mut limit = lower.len();
+    for k in (0..query.len()).rev() {
+        latest[k] = (0..limit).rev().find(|&i| lower[i] == query[k])?;
+        limit = latest[k];
+    }
+
     let mut positions = Vec::with_capacity(query.len());
     let mut from = 0;
-    for &q in &query {
-        let rest = from..lower.len();
-        // Prefer continuing a run, then a word start, then any occurrence.
-        let continues = positions.last().is_some_and(|&p: &usize| p + 1 == from) && lower.get(from) == Some(&q);
+    for (k, &q) in query.iter().enumerate() {
+        let rest = from..=latest[k];
+        // Prefer continuing a run, then a word start, then any occurrence,
+        // among positions that keep the rest of the query matchable.
+        let continues = positions.last().is_some_and(|&p: &usize| p + 1 == from)
+            && from <= latest[k]
+            && lower.get(from) == Some(&q);
         let pick = if continues {
             Some(from)
         } else {
@@ -110,6 +122,14 @@ mod tests {
     fn prefers_word_starts_for_highlighting() {
         let m = score("vsc", "Visual Studio Code").unwrap();
         assert_eq!(m.positions, vec![0, 7, 14]);
+    }
+
+    #[test]
+    fn word_start_preference_never_breaks_a_match() {
+        // Jumping to the "S" of "Studio" would leave no "ual" after it.
+        assert!(score("sual", "Visual Studio Code").is_some());
+        assert!(score("sks", "Task Scheduler").is_some());
+        assert_eq!(score("sual", "Visual Studio Code").unwrap().positions, vec![2, 3, 4, 5]);
     }
 
     #[test]
