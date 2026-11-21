@@ -17,8 +17,13 @@ All notable changes to this project are documented here. The format follows
   `workspace`, `movetoworkspace(silent)`, `reload`, and `exit`.
 - Floating windows. Dialogs and fixed-size windows float automatically.
 - Drag a tiled window onto another to swap them, or onto another monitor to move it.
-- Per-monitor status bar with workspace pills, window title, and clock.
-  Click or scroll it to switch workspaces.
+- Per-monitor floating bar: translucent, rounded islands for workspaces, the
+  focused window's icon and title, and the date and time, drawn with
+  Direct2D/DirectWrite. Click or scroll it to switch workspaces. Configure it
+  with `opacity` and `corner_radius`.
+- `mod = "win"` support: Win-key bindings go through a low-level keyboard hook,
+  so they override Windows' reserved shortcuts without opening the Start menu.
+- `hide_taskbar` keeps the Windows taskbar hidden, even when Explorer re-shows it.
 - Windows 11 accent border on the focused window.
 - Window rules by exe, class, or title: float, ignore, or assign a workspace.
 - TOML configuration with commented defaults, validation, and live reload.

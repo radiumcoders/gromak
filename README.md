@@ -4,12 +4,12 @@
 
 tessera arranges your windows into a clean dwindle layout with gaps, gives you
 ten workspaces you can flip between instantly, and stays out of the way: one
-slim bar per monitor, a coloured border on the focused window, and nothing else.
+floating bar per monitor, a coloured border on the focused window, and nothing else.
 
 ```
-╭────────────────────────────────────────────────────────────────╮
-│ ●1  2  3                 ~/projects — Terminal       Sat 21 Nov  21:27 │
-╰────────────────────────────────────────────────────────────────╯
+╭─────────╮       ╭─────────────────────────╮       ╭────────────────────╮
+│ (1) 2 3 │       │ ▣ ~/projects — Terminal │       │ Sat 21 Nov • 21:27 │
+╰─────────╯       ╰─────────────────────────╯       ╰────────────────────╯
 ╭──────────────────────────────╮ ╭──────────────────────────────╮
 │                              │ │                              │
 │          terminal            │ │           browser            │
@@ -34,7 +34,9 @@ slim bar per monitor, a coloured border on the focused window, and nothing else.
   (`movefocus`, `togglefloating`, `workspace e+1`…).
 - **Mouse-friendly too.** Drag a tiled window onto another to swap them, or onto
   another monitor to move it. Click or scroll the bar to change workspace.
-- **Minimal bar.** Workspace pills, the focused window's title, and a clock.
+- **Floating island bar.** Translucent, rounded islands for workspaces, the
+  focused window's icon and title, and the date and time. The space between
+  them is see-through and click-through.
 - **Focus borders.** Uses Windows 11's native DWM window borders.
 - **Window rules.** Float, ignore, or pin windows to workspaces by exe, class, or title.
 - **Multi-monitor and per-monitor DPI aware.** Gaps and the bar scale with each display.
@@ -44,7 +46,7 @@ slim bar per monitor, a coloured border on the focused window, and nothing else.
 
 ## Requirements
 
-- Windows 10 1809+ or Windows 11. Coloured focus borders and rounded bar corners need Windows 11.
+- Windows 10 1809+ or Windows 11. Coloured focus borders need Windows 11.
 - To build from source: [Rust](https://rustup.rs) (stable, MSVC toolchain).
 
 ## Install
@@ -67,7 +69,11 @@ that folder.
 ## Default keybindings
 
 `mod` is **Alt** by default. Set `general.mod` to `"win"` or `"ctrl+alt"` in
-the config to change it.
+the config to change it. With `mod = "win"`, tessera takes over Windows' own
+Win+key shortcuts (Win+1…9, Win+D, …) through a low-level keyboard hook, and
+pressing Win on its own still opens the Start menu. The one exception is
+**Win+L**, which always locks the PC, so use the arrow-key bindings for
+moving focus right.
 
 | Keys | Action |
 | --- | --- |
@@ -109,7 +115,9 @@ inactive_border = "#363a4f"
 
 [bar]
 enabled = true
-height = 30
+height = 32
+opacity = 0.9        # island opacity, 0.0 - 1.0
+corner_radius = 10
 font = "Segoe UI Variable Text"
 font_size = 13
 background = "#181926"
@@ -134,6 +142,13 @@ float = true
 The full reference, including every dispatcher, is in
 [`config/default.toml`](config/default.toml). You can also print it with
 `tessera --default-config`.
+
+### Hiding the Windows taskbar
+
+Set `hide_taskbar = true` under `[general]` to hide the Windows taskbar while
+tessera runs (for example if you use another taskbar or launcher). Windows are
+then tiled over the full screen, and the taskbar comes back when tessera exits.
+If Explorer re-shows it, tessera hides it again.
 
 ### Window rules
 
@@ -188,9 +203,10 @@ tessera from a terminal, the log also streams there.
   installers) can only be managed if tessera itself runs as administrator.
   Otherwise they are left untouched.
 - **Alt shortcuts.** With `mod = "alt"`, tessera's bindings take precedence
-  over apps' Alt shortcuts. Use `win` or `ctrl+alt` if that bothers you. Many
-  `win+key` combinations are reserved by Windows; tessera reports any binding
-  it cannot register.
+  over apps' Alt shortcuts. Use `win` or `ctrl+alt` if that bothers you.
+- **Win key.** Win+L always locks Windows and cannot be rebound. While an
+  elevated window has focus, Win-key bindings only work if tessera also runs as
+  administrator.
 - **No animations yet.** Windows move instantly.
 - **Hidden workspaces hide taskbar buttons.** Windows on workspaces that aren't
   shown are hidden, so their taskbar buttons disappear until you switch back.
