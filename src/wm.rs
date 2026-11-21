@@ -25,7 +25,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, Unregister
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     PostQuitMessage, EVENT_OBJECT_CLOAKED, EVENT_OBJECT_DESTROY, EVENT_OBJECT_HIDE, EVENT_OBJECT_NAMECHANGE,
     EVENT_OBJECT_SHOW, EVENT_OBJECT_UNCLOAKED, EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MINIMIZEEND,
-    EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MOVESIZEEND,
+    EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART,
 };
 
 pub use hidden::{flush as flush_hidden, recover as recover_hidden, restore_all as restore_hidden};
@@ -95,6 +95,12 @@ pub struct Wm {
     focused_icon: isize,
     active_monitor: usize,
     binds: Vec<Bind>,
+    /// Window rectangles when a mouse move/resize started (to tell them apart).
+    move_start: HashMap<Hwnd, Rect>,
+    /// The rectangle tessera last gave each window, so that a window covering
+    /// its monitor because *tessera* put it there is not mistaken for an app
+    /// that went fullscreen by itself.
+    placed: std::cell::RefCell<HashMap<Hwnd, Rect>>,
     active_border: u32,
     inactive_border: u32,
     /// The current colours (from the wallpaper, accent or config).
@@ -117,6 +123,8 @@ impl Wm {
             focused_icon: 0,
             active_monitor: 0,
             binds: Vec::new(),
+            move_start: HashMap::new(),
+            placed: std::cell::RefCell::new(HashMap::new()),
             active_border: 0,
             inactive_border: 0,
             palette: theme::palette_from_seed([0x8a, 0xad, 0xf4], false),
@@ -553,6 +561,11 @@ impl Wm {
         if self.focused == Some(h) {
             self.focused = None;
         }
+        if win::is_window(h) {
+            win::set_border_color(h, win::BORDER_DEFAULT);
+        }
+        self.move_start.remove(&h);
+        self.placed.borrow_mut().remove(&h);
         info!("unmanage {h:#x}");
         Some(m.ws)
     }
@@ -592,18 +605,27 @@ impl Wm {
         let (area, gap) = (self.tiling_area(mi), self.gap(mi));
         let workspace = &self.workspaces[ws];
         let fullscreen = workspace.fullscreen;
+        let monitor = self.monitors[mi].info.rect;
+        let mut placed = self.placed.borrow_mut();
         for (h, r) in workspace.tree.layout(area, gap) {
-            if fullscreen.is_some_and(|(f, _)| f == h) || win::is_app_fullscreen(h) {
+            if fullscreen.is_some_and(|(f, _)| f == h) {
+                continue;
+            }
+            // Leave apps that went fullscreen by themselves (browser F11)
+            // alone, but not windows tessera itself made monitor-sized.
+            if win::is_app_fullscreen(h) && placed.get(&h) != Some(&monitor) {
                 continue;
             }
             win::set_window_rect(h, r);
+            placed.insert(h, r);
         }
         if let Some((h, mode)) = fullscreen {
             let r = match mode {
-                FsMode::Fullscreen => self.monitors[mi].info.rect,
+                FsMode::Fullscreen => monitor,
                 FsMode::Maximized => area,
             };
             win::set_window_rect(h, r);
+            placed.insert(h, r);
             win::raise(h);
         }
         if let Some(bar) = &self.monitors[mi].bar {
@@ -1076,6 +1098,9 @@ impl Wm {
             EVENT_OBJECT_HIDE | EVENT_OBJECT_CLOAKED => self.on_hide(h, event == EVENT_OBJECT_CLOAKED),
             EVENT_OBJECT_DESTROY => {
                 self.ignored.remove(&h);
+                // Also for windows we do not manage (a taskbar destroyed by an
+                // Explorer restart while hidden).
+                hidden::forget(h);
                 let was_focused = self.focused == Some(h);
                 if let Some(ws) = self.unmanage(h) {
                     self.after_removal(ws, was_focused);
@@ -1089,6 +1114,11 @@ impl Wm {
             }
             EVENT_SYSTEM_MINIMIZEEND => self.manage_and_layout(h),
             EVENT_SYSTEM_FOREGROUND => self.on_foreground(h),
+            EVENT_SYSTEM_MOVESIZESTART => {
+                if self.windows.contains_key(&h) {
+                    self.move_start.insert(h, win::window_rect(h));
+                }
+            }
             EVENT_SYSTEM_MOVESIZEEND => self.on_move_end(h),
             EVENT_OBJECT_NAMECHANGE => {
                 // Some apps only get a title (and become manageable) after
@@ -1137,7 +1167,12 @@ impl Wm {
         if !self.windows.contains_key(&h) {
             return;
         }
-        let gone = if cloaked { win::is_cloaked(h) } else { !hidden::contains(h) && !win::is_visible(h) };
+        // Windows tessera hid itself are still ours, whatever else happens to
+        // them (cloaking included): dropping them would lose them for good.
+        if hidden::contains(h) {
+            return;
+        }
+        let gone = if cloaked { win::is_cloaked(h) } else { !win::is_visible(h) };
         if gone {
             let was_focused = self.focused == Some(h);
             if let Some(ws) = self.unmanage(h) {
@@ -1169,6 +1204,16 @@ impl Wm {
     fn on_move_end(&mut self, h: Hwnd) {
         let Some(m) = self.windows.get(&h) else { return };
         let (src, floating) = (m.ws, m.floating);
+        // A resize drag (the size changed) is not a move: never swap or move
+        // the window for it, just put the tile back.
+        let start = self.move_start.remove(&h);
+        let now = win::window_rect(h);
+        if start.is_some_and(|r| r.w != now.w || r.h != now.h) {
+            if !floating {
+                self.layout_ws(src);
+            }
+            return;
+        }
         let (cx, cy) = win::cursor_pos();
         let mi = self.monitor_index(win::monitor_at(cx, cy));
         let dst = self.monitors[mi].ws;
@@ -1235,8 +1280,9 @@ mod hidden {
     /// Shows every window tessera has hidden.
     pub fn restore_all() {
         let all = std::mem::take(&mut *set());
-        for &h in all.keys() {
-            if win::is_window(h) {
+        for (&h, class) in &all {
+            // Check the class too: a destroyed handle can be reused.
+            if win::is_window(h) && win::class(h) == *class {
                 win::show(h);
             }
         }

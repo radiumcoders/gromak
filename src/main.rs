@@ -218,6 +218,15 @@ unsafe extern "system" fn ctrl_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
             wm::restore_hidden();
             0
         }
+        // These are normally taken off the queue by the main loop without
+        // dispatching. If a nested message loop (inside a shell or COM call)
+        // dispatched one here, put it back for the main loop instead of
+        // dropping it.
+        WM_HOTKEY | WM_APP_HOTKEY | WM_APP_EVENT | WM_APP_DISPLAY | WM_APP_BAR | WM_APP_THEME | WM_APP_MOUSE
+        | WM_APP_QUIT => {
+            PostMessageW(hwnd, msg, wp, lp);
+            0
+        }
         _ => DefWindowProcW(hwnd, msg, wp, lp),
     }
 }
@@ -278,7 +287,7 @@ unsafe extern "system" fn win_event_proc(
 fn install_hooks() -> Vec<HWINEVENTHOOK> {
     let ranges = [
         (EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND),
-        (EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZEEND),
+        (EVENT_SYSTEM_MOVESIZESTART, EVENT_SYSTEM_MOVESIZEEND),
         (EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZEEND),
         (EVENT_OBJECT_DESTROY, EVENT_OBJECT_HIDE),
         (EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE),

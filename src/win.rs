@@ -297,7 +297,7 @@ pub fn is_app_fullscreen(h: Hwnd) -> bool {
 pub fn set_window_rect(h: Hwnd, r: Rect) {
     unsafe {
         if IsZoomed(hw(h)) != 0 {
-            ShowWindow(hw(h), SW_SHOWNOACTIVATE);
+            show_window(h, SW_SHOWNOACTIVATE);
         }
         let outer = outer_rect(h);
         let (l, t, rr, b) = match frame_bounds(h) {
