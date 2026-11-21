@@ -28,6 +28,7 @@ use crate::fuzzy;
 use crate::gfx::{hbitmap_bitmap, label, rgba, rounded, Factories, Surface};
 use crate::layout::Rect;
 use crate::orc;
+use crate::power::{self, PowerAction};
 use crate::theme::Palette;
 use crate::win::{self, wide};
 use std::cell::RefCell;
@@ -127,6 +128,8 @@ enum Row {
     Emoji(&'static Emoji, fuzzy::Match),
     /// An orc.pictures GIF (index into `Launcher::gifs`).
     Gif(usize, fuzzy::Match),
+    /// Lock, sleep, restart, shut down, ...
+    Power(PowerAction, fuzzy::Match),
     App(usize, fuzzy::Match),
     Run(String),
     Message(&'static str),
@@ -150,6 +153,8 @@ struct Launcher {
     gif_style: GifStyle,
     /// The configured style `gif_style` was last reset from.
     gif_style_config: GifStyle,
+    /// A power action waiting for its confirming second Enter.
+    armed: Option<PowerAction>,
     history: HashMap<String, u32>,
     query: String,
     pending_surrogate: Option<u16>,
@@ -188,6 +193,8 @@ enum Action {
     Type(String),
     /// Download a GIF and paste it (as a file) into the previous window.
     PasteGif(orc::Gif, GifStyle),
+    /// Lock, sleep, restart, shut down, ...
+    Power(PowerAction),
 }
 
 // ----- app index ------------------------------------------------------------
@@ -368,6 +375,7 @@ pub fn init() {
             gif_mode: false,
             gif_style: GifStyle::Orc,
             gif_style_config: GifStyle::Orc,
+            armed: None,
             history: load_history(),
             query: String::new(),
             pending_surrogate: None,
@@ -482,6 +490,13 @@ fn run(action: Action) {
                 info!("launcher: copied {text}");
             }
         }
+        Action::Power(action) => {
+            close(false);
+            info!("launcher: {}", action.name());
+            if let Err(e) = action.run() {
+                warn!("launcher: {}: {e}", action.name());
+            }
+        }
         Action::PasteGif(gif, style) => {
             close(true);
             std::thread::spawn(move || match orc::fetch_gif(&gif, style) {
@@ -521,6 +536,7 @@ impl Launcher {
     fn refilter(&mut self) {
         self.selected = 0;
         self.scroll = 0;
+        self.armed = None;
         let query = self.query.trim();
         // "gif ..." searches orc.pictures.
         let lower = query.to_lowercase();
@@ -569,6 +585,7 @@ impl Launcher {
             b.0.cmp(&a.0).then_with(|| self.apps[a.1].name.to_lowercase().cmp(&self.apps[b.1].name.to_lowercase()))
         });
         self.rows = calculation.into_iter().collect();
+        self.rows.extend(power::search(query).into_iter().map(|(a, m)| Row::Power(a, m)));
         self.rows.extend(scored.into_iter().take(MAX_RESULTS).map(|(_, i, m)| Row::App(i, m)));
         if self.rows.is_empty() {
             if !query.is_empty() {
@@ -586,6 +603,7 @@ impl Launcher {
             Row::Calc(_) => "calc".into(),
             Row::Emoji(e, _) => format!("emoji:{}", e.glyph),
             Row::Gif(i, _) => format!("gif:{}", self.gifs[*i].slug),
+            Row::Power(a, _) => format!("power:{}", a.name()),
             Row::App(i, _) => format!("app:{}", self.apps[*i].target),
             Row::Run(cmd) => format!("run:{cmd}"),
             Row::Message(text) => format!("msg:{text}"),
@@ -593,6 +611,7 @@ impl Launcher {
     }
 
     fn select(&mut self, delta: isize) {
+        self.armed = None;
         if self.rows.is_empty() {
             return;
         }
@@ -606,13 +625,23 @@ impl Launcher {
         self.caret_on = true;
     }
 
-    fn activate(&self, index: usize) -> Action {
+    fn activate(&mut self, index: usize) -> Action {
         match self.rows.get(index) {
             Some(Row::App(i, _)) => Action::Launch { app: Some(self.apps[*i].clone()), command: None },
             Some(Row::Run(cmd)) => Action::Launch { app: None, command: Some(cmd.clone()) },
             Some(Row::Calc(value)) => Action::Copy(value.clone()),
             Some(Row::Emoji(e, _)) => Action::Type(e.glyph.to_string()),
             Some(Row::Gif(i, _)) => Action::PasteGif(self.gifs[*i].clone(), self.gif_style),
+            Some(Row::Power(action, _)) => {
+                let action = *action;
+                // Shutting down and friends need a second Enter.
+                if action.needs_confirmation() && self.armed != Some(action) {
+                    self.armed = Some(action);
+                    Action::Render
+                } else {
+                    Action::Power(action)
+                }
+            }
             _ => Action::Nothing,
         }
     }
@@ -1220,6 +1249,55 @@ impl Launcher {
                             &gfx.brush,
                             D2D1_DRAW_TEXT_OPTIONS_NONE,
                         );
+                    }
+                }
+                Row::Power(action, matched) => {
+                    if let Some(glyph) = label(f, &gfx.emoji, action.glyph(), icon_size * 2.0, row_h) {
+                        let x = icon_x + (icon_size - glyph.width) / 2.0;
+                        gfx.brush.SetColor(&rgba(p.foreground, 1.0));
+                        gfx.target.DrawTextLayout(
+                            Vector2 { X: x, Y: y0 },
+                            &glyph.layout,
+                            &gfx.brush,
+                            D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT,
+                        );
+                    }
+                    if self.armed == Some(*action) {
+                        // Waiting for the confirming Enter.
+                        if let Some(prompt) = label(f, &gfx.strong, action.confirm_prompt(), name_w, row_h) {
+                            gfx.brush.SetColor(&rgba(p.accent, 1.0));
+                            gfx.target.DrawTextLayout(
+                                Vector2 { X: name_x, Y: y0 },
+                                &prompt.layout,
+                                &gfx.brush,
+                                D2D1_DRAW_TEXT_OPTIONS_NONE,
+                            );
+                        }
+                    } else if let Some(name) = label(f, &gfx.item, action.name(), name_w, row_h) {
+                        let accent_effect: IUnknown = gfx.accent.cast()?;
+                        for start in utf16_offsets(action.name(), &matched.positions) {
+                            let range = DWRITE_TEXT_RANGE { startPosition: start, length: 1 };
+                            name.layout.SetFontWeight(DWRITE_FONT_WEIGHT(600), range)?;
+                            name.layout.SetDrawingEffect(&accent_effect, range)?;
+                        }
+                        gfx.brush.SetColor(&rgba(p.foreground, text_alpha));
+                        gfx.target.DrawTextLayout(
+                            Vector2 { X: name_x, Y: y0 },
+                            &name.layout,
+                            &gfx.brush,
+                            D2D1_DRAW_TEXT_OPTIONS_NONE,
+                        );
+                        if selected {
+                            if let Some(hint) = label(f, &gfx.hint, "System", name_w, row_h) {
+                                gfx.brush.SetColor(&rgba(p.foreground, 0.42));
+                                gfx.target.DrawTextLayout(
+                                    Vector2 { X: right - hint.width, Y: y0 },
+                                    &hint.layout,
+                                    &gfx.brush,
+                                    D2D1_DRAW_TEXT_OPTIONS_NONE,
+                                );
+                            }
+                        }
                     }
                 }
                 Row::Run(command) => {
