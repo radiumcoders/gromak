@@ -762,3 +762,49 @@ pub fn set_transitions_disabled(h: Hwnd, disabled: bool) {
 pub fn is_shell_surface(h: Hwnd) -> bool {
     h == 0 || matches!(class(h).as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd")
 }
+
+/// Gives one of our own windows a blurred ("acrylic") backdrop of whatever
+/// is behind it, tinted with `tint` (`COLORREF`) at `tint_alpha` (0-255).
+///
+/// Uses the undocumented `SetWindowCompositionAttribute`, which (unlike the
+/// documented Mica/Acrylic backdrops) keeps blurring while the window is
+/// inactive, which a bar always is. Returns false if it is unavailable.
+pub fn set_acrylic(h: Hwnd, tint: u32, tint_alpha: u8) -> bool {
+    use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
+    #[repr(C)]
+    struct AccentPolicy {
+        state: u32,
+        flags: u32,
+        gradient: u32,
+        animation_id: u32,
+    }
+    #[repr(C)]
+    struct CompositionData {
+        attribute: u32,
+        data: *mut c_void,
+        size: usize,
+    }
+    type SetWindowCompositionAttribute = unsafe extern "system" fn(HWND, *mut CompositionData) -> BOOL;
+    const WCA_ACCENT_POLICY: u32 = 19;
+    const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
+    unsafe {
+        let user32 = GetModuleHandleW(wide("user32.dll").as_ptr());
+        let Some(proc) = GetProcAddress(user32, c"SetWindowCompositionAttribute".as_ptr().cast()) else {
+            return false;
+        };
+        let set: SetWindowCompositionAttribute = std::mem::transmute(proc);
+        // GradientColor is 0xAABBGGRR.
+        let mut policy = AccentPolicy {
+            state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
+            flags: 0,
+            gradient: (tint & 0x00FF_FFFF) | ((tint_alpha as u32) << 24),
+            animation_id: 0,
+        };
+        let mut data = CompositionData {
+            attribute: WCA_ACCENT_POLICY,
+            data: &mut policy as *mut AccentPolicy as *mut c_void,
+            size: size_of::<AccentPolicy>(),
+        };
+        set(hw(h), &mut data) != 0
+    }
+}

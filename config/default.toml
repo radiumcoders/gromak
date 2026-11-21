@@ -50,6 +50,11 @@ inactive_border = "#363a4f"
 
 [bar]
 enabled = true
+# "full": one strip across the top, edge to edge. "islands": floating rounded
+# islands with gaps around them.
+style = "full"
+# Blur what is behind the bar, like frosted glass (full style only).
+blur = true
 # Height in logical pixels (scaled with the monitor's DPI).
 height = 26
 font = "Segoe UI Variable Text"
@@ -59,9 +64,10 @@ background = "#181926"
 foreground = "#cad3f5"
 accent = "#8aadf4"
 muted = "#5b6078"
-# The bar is drawn as floating islands; this is their opacity (0.0 - 1.0).
-opacity = 0.9
-# Corner radius of the islands, in logical pixels.
+# Opacity of the bar background (0.0 - 1.0). With blur on, keep it low so
+# the blur shows through.
+opacity = 0.55
+# Corner radius of the islands (islands style), in logical pixels.
 corner_radius = 8
 show_title = true
 show_clock = true

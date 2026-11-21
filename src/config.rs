@@ -117,6 +117,10 @@ pub struct Decoration {
 #[serde(default, deny_unknown_fields)]
 pub struct Bar {
     pub enabled: bool,
+    /// One full-width strip, or floating islands.
+    pub style: BarStyle,
+    /// Blur what is behind the bar (full style only).
+    pub blur: bool,
     pub height: i32,
     pub font: String,
     pub font_size: i32,
@@ -124,13 +128,24 @@ pub struct Bar {
     pub foreground: String,
     pub accent: String,
     pub muted: String,
-    /// Opacity of the bar islands, 0.0 (invisible) to 1.0 (solid).
+    /// Opacity of the bar background, 0.0 (invisible) to 1.0 (solid).
     pub opacity: f32,
     /// Corner radius of the islands in logical pixels.
     pub corner_radius: i32,
     pub show_title: bool,
     pub show_clock: bool,
     pub clock_24h: bool,
+}
+
+/// How the bar is drawn.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BarStyle {
+    /// One strip across the top of the monitor, edge to edge.
+    #[default]
+    Full,
+    /// Floating rounded islands with gaps around them.
+    Islands,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -257,6 +272,8 @@ impl Default for Bar {
     fn default() -> Self {
         Bar {
             enabled: true,
+            style: BarStyle::Full,
+            blur: true,
             height: 26,
             font: "Segoe UI Variable Text".into(),
             font_size: 12,
@@ -264,7 +281,7 @@ impl Default for Bar {
             foreground: "#cad3f5".into(),
             accent: "#8aadf4".into(),
             muted: "#5b6078".into(),
-            opacity: 0.9,
+            opacity: 0.55,
             corner_radius: 8,
             show_title: true,
             show_clock: true,

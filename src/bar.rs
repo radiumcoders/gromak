@@ -103,6 +103,10 @@ pub struct Style {
     pub muted: u32,
     pub opacity: f32,
     pub radius: f32,
+    /// One full-width strip instead of floating islands.
+    pub full: bool,
+    /// Blur what is behind the bar (full style).
+    pub blur: bool,
     pub font: String,
     pub font_px: f32,
     pub scale: f32,
@@ -120,6 +124,8 @@ impl Style {
             accent: palette.accent,
             muted: palette.muted,
             opacity: cfg.opacity.clamp(0.0, 1.0),
+            full: cfg.style == config::BarStyle::Full,
+            blur: cfg.blur && cfg.style == config::BarStyle::Full,
             radius: cfg.corner_radius.max(0) as f32 * scale,
             font: cfg.font.clone(),
             font_px: cfg.font_size as f32 * scale,
@@ -204,6 +210,10 @@ impl Bar {
         };
         if hwnd.is_null() {
             return None;
+        }
+        if style.blur {
+            // The blur sits under our own (translucent) drawing; no extra tint.
+            win::set_acrylic(hwnd as isize, style.background, 0);
         }
         let model = Model {
             rect,
@@ -417,7 +427,18 @@ unsafe fn draw(f: &Factories, model: &mut Model) -> windows::core::Result<()> {
         brush.SetColor(&color);
         target.FillRoundedRectangle(r, brush);
     };
+    // Full style: one tinted strip (over the blur, when on) with a hairline
+    // along the bottom; the islands then have no background of their own.
+    if style.full {
+        brush.SetColor(&rgba(style.background, style.opacity));
+        target.FillRectangle(&D2D_RECT_F { left: 0.0, top: 0.0, right: w, bottom: h }, brush);
+        brush.SetColor(&rgba(style.foreground, 0.08));
+        target.FillRectangle(&D2D_RECT_F { left: 0.0, top: h - 1.0, right: w, bottom: h }, brush);
+    }
     let island = |l: f32, r: f32| {
+        if style.full {
+            return;
+        }
         let shape = rounded(l + 0.5, 0.5, r - 0.5, h - 0.5, style.radius);
         fill(&shape, rgba(style.background, style.opacity));
         brush.SetColor(&rgba(style.foreground, 0.10));

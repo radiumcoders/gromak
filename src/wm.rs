@@ -11,7 +11,7 @@
 
 use crate::bar::{Bar, BarState, Style, WsItem};
 use crate::config::{
-    self, Bind, Command, Config, FsMode, ThemeMode, ThemeSource, WsTarget, MOD_ALT, MOD_WIN, VK_WHEEL_DOWN,
+    self, BarStyle, Bind, Command, Config, FsMode, ThemeMode, ThemeSource, WsTarget, MOD_ALT, MOD_WIN, VK_WHEEL_DOWN,
     VK_WHEEL_UP, WORKSPACES,
 };
 use crate::keyboard::{self, HookBind};
@@ -501,15 +501,24 @@ impl Wm {
 
     fn bar_rect(&self, mi: usize) -> Rect {
         let base = self.base_rect(mi);
-        let go = self.scaled(mi, self.cfg.general.gaps_out);
-        Rect::new(base.x + go, base.y + go, base.w - 2 * go, self.scaled(mi, self.cfg.bar.height))
+        let height = self.scaled(mi, self.cfg.bar.height);
+        match self.cfg.bar.style {
+            // Edge to edge along the top.
+            BarStyle::Full => Rect::new(base.x, base.y, base.w, height),
+            // Floating, with the outer gap around it.
+            BarStyle::Islands => {
+                let go = self.scaled(mi, self.cfg.general.gaps_out);
+                Rect::new(base.x + go, base.y + go, base.w - 2 * go, height)
+            }
+        }
     }
 
     fn tiling_area(&self, mi: usize) -> Rect {
         let mut area = self.base_rect(mi);
         let go = self.scaled(mi, self.cfg.general.gaps_out);
         if self.cfg.bar.enabled {
-            let top = self.scaled(mi, self.cfg.bar.height) + go;
+            let margin = if self.cfg.bar.style == BarStyle::Islands { go } else { 0 };
+            let top = self.scaled(mi, self.cfg.bar.height) + margin;
             area.y += top;
             area.h -= top;
         }
