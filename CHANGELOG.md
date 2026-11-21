@@ -9,8 +9,6 @@ All notable changes to this project are documented here. The format follows
 ### Added
 
 - Dwindle tiling layout with inner and outer gaps.
-- Ten global workspaces, one shown per monitor, with switching, moving
-  windows (with or without following), and relative navigation.
 - Hyprland-style dispatchers bound to configurable global hotkeys:
   `exec`, `killactive`, `togglefloating`, `fullscreen`, `togglesplit`,
   `movefocus`, `movewindow`, `resizeactive`, `cyclenext`/`cycleprev`,

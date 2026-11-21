@@ -336,7 +336,6 @@ clipboard history or Win+N for notifications, remove or rebind that line in
 
 ## Roadmap
 
-- `mod`+drag to move and resize floating windows
 - Resizing tiles by dragging their edges
 - Smooth workspace and window animations
 - Per-workspace layouts (master/stack, monocle)
