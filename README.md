@@ -89,7 +89,7 @@ moving focus right.
 | --- | --- |
 | `mod+Enter` | Open a terminal (`general.terminal`, Windows Terminal by default) |
 | `mod+Space` | Open the app launcher |
-| `mod+Q` | Close the focused window |
+| `mod+Q`, `mod+W` | Close the focused window |
 | `mod+H/J/K/L`, `mod+←↓↑→` | Move focus (crosses monitors at the edge) |
 | `mod+Shift+H/J/K/L`, `mod+Shift+←↓↑→` | Swap with neighbour (or move to the next monitor) |
 | `mod+Ctrl+H/J/K/L` | Move the nearest divider |

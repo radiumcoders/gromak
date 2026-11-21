@@ -94,6 +94,7 @@ float = true
 "mod+return" = "exec $terminal"
 "mod+space" = "launcher"
 "mod+q" = "killactive"
+"mod+w" = "killactive"
 "mod+v" = "togglefloating"
 "mod+f" = "fullscreen 1"
 "mod+shift+f" = "fullscreen 0"
