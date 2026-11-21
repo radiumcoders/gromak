@@ -1,13 +1,14 @@
 //! tessera — a minimal, keyboard-driven tiling window manager for Windows.
 //!
-//! The process is single-threaded: a hidden control window receives global
-//! hotkeys, WinEvent hooks post window events to it, and the message loop
-//! below feeds both into the window manager ([`wm::Wm`]).
+//! The window manager runs on the main thread: a hidden control window
+//! receives global hotkeys, WinEvent hooks and the keyboard hook thread post
+//! events to it, and the message loop below feeds them into [`wm::Wm`].
 
 #[macro_use]
 mod log;
 mod bar;
 mod config;
+mod keyboard;
 mod layout;
 mod win;
 mod wm;
@@ -30,6 +31,8 @@ pub const WM_APP_DISPLAY: u32 = WM_APP + 2;
 pub const WM_APP_BAR: u32 = WM_APP + 3;
 /// Leave the message loop and clean up (Ctrl+C, console close).
 pub const WM_APP_QUIT: u32 = WM_APP + 4;
+/// The keyboard hook matched a binding: `wparam` is the binding id.
+pub const WM_APP_HOTKEY: u32 = WM_APP + 5;
 
 /// `lparam` is the 0-based workspace index that was clicked.
 pub const BAR_WORKSPACE: usize = 0;
@@ -98,6 +101,7 @@ fn main() {
     }
     CTRL_HWND.store(ctrl, Ordering::Relaxed);
     let hooks = install_hooks();
+    keyboard::start();
     unsafe { SetConsoleCtrlHandler(Some(console_handler), 1) };
 
     let mut wm = wm::Wm::new(cfg, ctrl);
@@ -111,6 +115,7 @@ fn main() {
 
     info!("shutting down");
     wm.shutdown();
+    keyboard::stop();
     for hook in hooks {
         unsafe { UnhookWinEvent(hook) };
     }
@@ -269,7 +274,7 @@ fn run_message_loop(wm: &mut wm::Wm) {
             break;
         }
         let m = msg;
-        let handled = matches!(m.message, WM_HOTKEY | WM_APP_EVENT | WM_APP_DISPLAY | WM_APP_BAR);
+        let handled = matches!(m.message, WM_HOTKEY | WM_APP_HOTKEY | WM_APP_EVENT | WM_APP_DISPLAY | WM_APP_BAR);
         if !handled {
             unsafe {
                 TranslateMessage(&msg);
@@ -279,7 +284,8 @@ fn run_message_loop(wm: &mut wm::Wm) {
         }
         // A bug in one handler must not take the whole desktop down with it.
         let result = catch_unwind(AssertUnwindSafe(|| match m.message {
-            WM_HOTKEY => wm.on_hotkey(m.wParam as i32),
+            WM_HOTKEY => wm.on_hotkey(m.wParam as i32, false),
+            WM_APP_HOTKEY => wm.on_hotkey(m.wParam as i32, true),
             WM_APP_EVENT => wm.on_event(m.wParam as u32, m.lParam),
             WM_APP_DISPLAY => wm.on_display_change(),
             WM_APP_BAR => wm.on_bar(m.wParam, m.lParam),

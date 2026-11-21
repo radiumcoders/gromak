@@ -11,6 +11,7 @@
 
 use crate::bar::{Bar, BarState, Style, WsItem};
 use crate::config::{self, Bind, Command, Config, FsMode, WsTarget, MOD_ALT, MOD_WIN, WORKSPACES};
+use crate::keyboard::{self, HookBind};
 use crate::layout::{self, Dir, Dwindle, Rect};
 use crate::win::{self, Hwnd};
 use std::collections::{HashMap, HashSet};
@@ -188,26 +189,34 @@ impl Wm {
             warn!("config: {e}");
         }
         self.binds = binds;
-        let mut failed = Vec::new();
+        // Win-key bindings always go through the keyboard hook, because
+        // Windows reserves most of them. Everything else uses RegisterHotKey
+        // (which also works while an elevated window has focus) and falls
+        // back to the hook if another app already owns the combination.
+        let mut hooked = Vec::new();
         for (i, bind) in self.binds.iter().enumerate() {
-            let ok = unsafe {
-                RegisterHotKey(self.ctrl as _, i as i32 + 1, bind.hotkey.mods | MOD_NOREPEAT, bind.hotkey.vk)
-            };
-            if ok == 0 {
-                failed.push(bind.keys.as_str());
+            let id = i as i32 + 1;
+            let (mods, vk) = (bind.hotkey.mods, bind.hotkey.vk);
+            let use_hook =
+                mods & MOD_WIN != 0 || unsafe { RegisterHotKey(self.ctrl as _, id, mods | MOD_NOREPEAT, vk) } == 0;
+            if use_hook {
+                if mods & MOD_WIN != 0 && vk == 'L' as u32 {
+                    warn!("binds.\"{}\": win+l always locks Windows and cannot be overridden", bind.keys);
+                }
+                hooked.push(HookBind { mods, vk, id, repeat: matches!(bind.command, Command::Resize(_)) });
             }
         }
-        if !failed.is_empty() {
-            let list = failed.join(", ");
-            warn!("could not register hotkeys (taken by Windows or another app): {list}");
-            self.notify(&format!("hotkeys unavailable: {list}"));
+        if !hooked.is_empty() {
+            info!("{} binding(s) handled by the keyboard hook", hooked.len());
         }
+        keyboard::set_binds(hooked);
     }
 
     fn unregister_hotkeys(&mut self) {
         for i in 0..self.binds.len() {
             unsafe { UnregisterHotKey(self.ctrl as _, i as i32 + 1) };
         }
+        keyboard::set_binds(Vec::new());
         self.binds.clear();
     }
 
@@ -603,11 +612,13 @@ impl Wm {
 
     // ----- dispatchers ---------------------------------------------------
 
-    pub fn on_hotkey(&mut self, id: i32) {
+    /// Runs the binding with this id. `from_hook` is true for bindings the
+    /// keyboard hook handled; the hook masks the menu key itself.
+    pub fn on_hotkey(&mut self, id: i32, from_hook: bool) {
         let Some(bind) = usize::try_from(id - 1).ok().and_then(|i| self.binds.get(i)).cloned() else {
             return;
         };
-        if bind.hotkey.mods & (MOD_ALT | MOD_WIN) != 0 {
+        if !from_hook && bind.hotkey.mods & (MOD_ALT | MOD_WIN) != 0 {
             win::mask_menu_key();
         }
         self.dispatch(bind.command);
