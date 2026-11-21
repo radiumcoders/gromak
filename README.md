@@ -34,6 +34,9 @@ floating bar per monitor, a coloured border on the focused window, and nothing e
   (`movefocus`, `togglefloating`, `workspace e+1`…).
 - **Mouse-friendly too.** Drag a tiled window onto another to swap them, or onto
   another monitor to move it. Click or scroll the bar to change workspace.
+- **Focus follows mouse (optional).** Focus moves to whatever window the pointer
+  is over, and the pointer follows when you move focus with the keyboard, like
+  Hyprland's `follow_mouse`. Turn it on with `focus_follows_mouse = true`.
 - **Floating island bar.** Translucent, rounded islands for workspaces, the
   focused window's icon and title, and the date and time. The space between
   them is see-through and click-through.
@@ -111,6 +114,7 @@ gaps_out = 10
 mod = "alt"
 terminal = "wt.exe"
 hide_taskbar = false
+focus_follows_mouse = false
 
 [theme]
 source = "wallpaper"  # or "accent" or "manual"

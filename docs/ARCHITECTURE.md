@@ -24,6 +24,7 @@ ordinary `SetWindowPos` / `ShowWindow` calls.
 | `src/config.rs` | TOML schema, defaults, validation, and parsing of hotkeys and dispatcher commands. No Win32, fully unit-tested. |
 | `src/bar.rs` | The per-monitor floating bar: a layered window drawn with Direct2D and DirectWrite. |
 | `src/keyboard.rs` | The low-level keyboard hook thread for Win-key bindings. |
+| `src/mouse.rs` | The low-level mouse hook thread that reports pointer movement for focus follows mouse. |
 | `src/theme.rs` | Derives colour palettes from the wallpaper or accent colour, and detects changes. |
 | `src/win.rs` | Thin wrappers over the Win32 / DWM APIs, plus the "is this a normal app window?" heuristic. |
 | `src/log.rs` | File and stderr logger. |
@@ -121,6 +122,19 @@ When a binding includes Alt or Win, tessera sends an unassigned virtual key
 (`0xE8`) right after it fires. Otherwise, releasing the modifier would look
 like a lone Alt or Win press to the focused app, which then opens its menu bar
 or the Start menu.
+
+## Focus follows mouse
+
+`src/mouse.rs` installs a `WH_MOUSE_LL` hook on its own thread. The hook does
+no work beyond noting that the pointer moved. An atomic flag coalesces
+movement into at most one queued `WM_APP_MOUSE` message, so a 1000 Hz mouse
+costs the window manager one cheap check per message-loop turn, not a thousand.
+`Wm::on_mouse_move` reads the cursor position, finds the root window under it
+and focuses it if it is a managed window on a visible workspace. Nothing
+happens while a mouse button is held. Keyboard-driven focus changes move the
+pointer to the centre of the newly focused window's *target* rectangle,
+because window moves are asynchronous. `SetCursorPos` does not go through the
+input stream, so this pointer move never triggers the hook itself.
 
 ## Theming
 
