@@ -551,3 +551,60 @@ pub fn run_command(command: &str) -> std::io::Result<()> {
         .spawn()
         .map(|_| ())
 }
+
+const CF_UNICODETEXT: u32 = 13;
+
+/// The clipboard's text, if it holds any.
+pub fn clipboard_text() -> Option<String> {
+    use windows_sys::Win32::System::DataExchange::{CloseClipboard, GetClipboardData, OpenClipboard};
+    use windows_sys::Win32::System::Memory::{GlobalLock, GlobalUnlock};
+    unsafe {
+        if OpenClipboard(null_mut()) == 0 {
+            return None;
+        }
+        let handle = GetClipboardData(CF_UNICODETEXT);
+        let text = if handle.is_null() {
+            None
+        } else {
+            let ptr = GlobalLock(handle) as *const u16;
+            let text = (!ptr.is_null()).then(|| {
+                let len = (0..).take_while(|&i| *ptr.add(i) != 0).count();
+                String::from_utf16_lossy(std::slice::from_raw_parts(ptr, len))
+            });
+            GlobalUnlock(handle);
+            text
+        };
+        CloseClipboard();
+        text
+    }
+}
+
+/// Puts text on the clipboard. Returns whether it worked.
+pub fn set_clipboard_text(text: &str) -> bool {
+    use windows_sys::Win32::Foundation::GlobalFree;
+    use windows_sys::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
+    use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+    let utf16 = wide(text);
+    unsafe {
+        if OpenClipboard(null_mut()) == 0 {
+            return false;
+        }
+        EmptyClipboard();
+        let bytes = utf16.len() * 2;
+        let memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
+        let mut ok = false;
+        if !memory.is_null() {
+            let dest = GlobalLock(memory) as *mut u16;
+            if !dest.is_null() {
+                std::ptr::copy_nonoverlapping(utf16.as_ptr(), dest, utf16.len());
+                GlobalUnlock(memory);
+                ok = !SetClipboardData(CF_UNICODETEXT, memory).is_null();
+            }
+            if !ok {
+                GlobalFree(memory);
+            }
+        }
+        CloseClipboard();
+        ok
+    }
+}

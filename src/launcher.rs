@@ -21,6 +21,7 @@
 //! Direct2D. Unlike the bar it takes keyboard focus while open, and closes
 //! on Escape or as soon as it loses focus.
 
+use crate::calc;
 use crate::fuzzy;
 use crate::gfx::{hbitmap_bitmap, label, rgba, rounded, Factories, Surface};
 use crate::layout::Rect;
@@ -49,9 +50,7 @@ use windows::Win32::UI::Shell::{
 };
 use windows_numerics::Vector2;
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
-use windows_sys::Win32::System::DataExchange::{CloseClipboard, GetClipboardData, OpenClipboard};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows_sys::Win32::System::Memory::{GlobalLock, GlobalUnlock};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, VK_CONTROL, VK_DOWN, VK_ESCAPE, VK_NEXT, VK_PRIOR, VK_RETURN, VK_SHIFT, VK_TAB, VK_UP,
 };
@@ -107,11 +106,15 @@ struct Gfx {
     accent: ID2D1SolidColorBrush,
     query: IDWriteTextFormat,
     item: IDWriteTextFormat,
+    strong: IDWriteTextFormat,
+    hint: IDWriteTextFormat,
     /// App icons by target (None = no icon available).
     icons: HashMap<String, Option<ID2D1Bitmap>>,
 }
 
 enum Row {
+    /// A calculation and its formatted result.
+    Calc(String),
     App(usize, fuzzy::Match),
     Run(String),
     Message(&'static str),
@@ -152,8 +155,15 @@ thread_local! {
 enum Action {
     Nothing,
     Render,
-    Close { restore_focus: bool },
-    Launch { app: Option<App>, command: Option<String> },
+    Close {
+        restore_focus: bool,
+    },
+    Launch {
+        app: Option<App>,
+        command: Option<String>,
+    },
+    /// Copy text to the clipboard and close.
+    Copy(String),
 }
 
 // ----- app index ------------------------------------------------------------
@@ -413,6 +423,12 @@ fn run(action: Action) {
         Action::Render => render(),
         Action::Close { restore_focus } => close(restore_focus),
         Action::Launch { app, command } => launch(app, command),
+        Action::Copy(text) => {
+            close(true);
+            if win::set_clipboard_text(&text) {
+                info!("launcher: copied {text}");
+            }
+        }
     }
 }
 
@@ -420,7 +436,15 @@ fn run(action: Action) {
 
 impl Launcher {
     fn refilter(&mut self) {
+        self.selected = 0;
+        self.scroll = 0;
         let query = self.query.trim();
+        let calculation = calc::evaluate_query(query).map(|v| Row::Calc(calc::format(v)));
+        // "=..." is calculator-only.
+        if query.starts_with('=') {
+            self.rows = vec![calculation.unwrap_or(Row::Message("Not a valid calculation yet"))];
+            return;
+        }
         let mut scored: Vec<(i32, usize, fuzzy::Match)> = self
             .apps
             .iter()
@@ -435,7 +459,8 @@ impl Launcher {
         scored.sort_by(|a, b| {
             b.0.cmp(&a.0).then_with(|| self.apps[a.1].name.to_lowercase().cmp(&self.apps[b.1].name.to_lowercase()))
         });
-        self.rows = scored.into_iter().take(MAX_RESULTS).map(|(_, i, m)| Row::App(i, m)).collect();
+        self.rows = calculation.into_iter().collect();
+        self.rows.extend(scored.into_iter().take(MAX_RESULTS).map(|(_, i, m)| Row::App(i, m)));
         if self.rows.is_empty() {
             if !query.is_empty() {
                 self.rows.push(Row::Run(query.to_string()));
@@ -443,8 +468,6 @@ impl Launcher {
                 self.rows.push(Row::Message("Indexing apps…"));
             }
         }
-        self.selected = 0;
-        self.scroll = 0;
     }
 
     fn select(&mut self, delta: isize) {
@@ -465,6 +488,7 @@ impl Launcher {
         match self.rows.get(index) {
             Some(Row::App(i, _)) => Action::Launch { app: Some(self.apps[*i].clone()), command: None },
             Some(Row::Run(cmd)) => Action::Launch { app: None, command: Some(cmd.clone()) },
+            Some(Row::Calc(value)) => Action::Copy(value.clone()),
             _ => Action::Nothing,
         }
     }
@@ -488,7 +512,7 @@ impl Launcher {
                 self.query.truncate(cut);
             }
             0x16 => {
-                if let Some(text) = clipboard_text() {
+                if let Some(text) = win::clipboard_text() {
                     let line = text.lines().next().unwrap_or_default().to_string();
                     self.type_text(&line);
                 }
@@ -590,29 +614,6 @@ impl Launcher {
         }
         let i = ((y - top) / row_h) as usize;
         (i < self.visible_rows()).then_some(self.scroll + i)
-    }
-}
-
-fn clipboard_text() -> Option<String> {
-    const CF_UNICODETEXT: u32 = 13;
-    unsafe {
-        if OpenClipboard(null_mut()) == 0 {
-            return None;
-        }
-        let handle = GetClipboardData(CF_UNICODETEXT);
-        let text = if handle.is_null() {
-            None
-        } else {
-            let ptr = GlobalLock(handle) as *const u16;
-            let text = (!ptr.is_null()).then(|| {
-                let len = (0..).take_while(|&i| *ptr.add(i) != 0).count();
-                String::from_utf16_lossy(std::slice::from_raw_parts(ptr, len))
-            });
-            GlobalUnlock(handle);
-            text
-        };
-        CloseClipboard();
-        text
     }
 }
 
@@ -720,6 +721,8 @@ unsafe fn create_gfx(f: &Factories, style: &Style) -> windows::core::Result<Gfx>
         accent,
         query: crate::gfx::text_format(f, &style.font, 400, style.font_px * 1.35)?,
         item: crate::gfx::text_format(f, &style.font, 450, style.font_px * 1.12)?,
+        strong: crate::gfx::text_format(f, &style.font, 600, style.font_px * 1.25)?,
+        hint: crate::gfx::text_format(f, &style.font, 450, style.font_px * 0.95)?,
         icons: HashMap::new(),
     })
 }
@@ -841,7 +844,7 @@ impl Launcher {
         let mut caret_x = text_x;
         let query_origin = Vector2 { X: text_x, Y: m + pad };
         if self.query.is_empty() {
-            if let Some(placeholder) = label(f, &gfx.query, "Search apps", text_w, search_h) {
+            if let Some(placeholder) = label(f, &gfx.query, "Search apps, or type maths like 2+2", text_w, search_h) {
                 brush.SetColor(&rgba(p.foreground, 0.32));
                 target.DrawTextLayout(query_origin, &placeholder.layout, brush, D2D1_DRAW_TEXT_OPTIONS_NONE);
             }
@@ -914,6 +917,38 @@ impl Launcher {
                         gfx.target.DrawTextLayout(
                             Vector2 { X: name_x, Y: y0 },
                             &name.layout,
+                            &gfx.brush,
+                            D2D1_DRAW_TEXT_OPTIONS_NONE,
+                        );
+                    }
+                }
+                Row::Calc(value) => {
+                    if let Some(eq) = label(f, &gfx.strong, "=", icon_size, row_h) {
+                        gfx.brush.SetColor(&rgba(p.accent, 1.0));
+                        let x = icon_x + (icon_size - eq.width) / 2.0;
+                        gfx.target.DrawTextLayout(
+                            Vector2 { X: x, Y: y0 },
+                            &eq.layout,
+                            &gfx.brush,
+                            D2D1_DRAW_TEXT_OPTIONS_NONE,
+                        );
+                    }
+                    let hint = label(f, &gfx.hint, "Enter to copy", name_w, row_h);
+                    let hint_w = hint.as_ref().map_or(0.0, |h| h.width + 12.0 * s);
+                    if let Some(result) = label(f, &gfx.strong, value, name_w - hint_w, row_h) {
+                        gfx.brush.SetColor(&rgba(p.foreground, 1.0));
+                        gfx.target.DrawTextLayout(
+                            Vector2 { X: name_x, Y: y0 },
+                            &result.layout,
+                            &gfx.brush,
+                            D2D1_DRAW_TEXT_OPTIONS_NONE,
+                        );
+                    }
+                    if let (Some(hint), true) = (hint, selected) {
+                        gfx.brush.SetColor(&rgba(p.foreground, 0.42));
+                        gfx.target.DrawTextLayout(
+                            Vector2 { X: right - hint.width, Y: y0 },
+                            &hint.layout,
                             &gfx.brush,
                             D2D1_DRAW_TEXT_OPTIONS_NONE,
                         );
