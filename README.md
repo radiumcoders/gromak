@@ -97,6 +97,7 @@ moving focus right.
 | `mod+Ctrl+H/J/K/L` | Move the nearest divider |
 | `mod+1` … `mod+0` | Switch to workspace 1–10 |
 | `mod+Shift+1` … `mod+Shift+0` | Move window to workspace 1–10 and follow it |
+| `mod+Ctrl+1` … `mod+Ctrl+0` | Send window to workspace 1–10 without following it |
 | `mod+.` / `mod+,` | Next / previous workspace |
 | `mod+N` / `mod+Shift+N` | Focus next / previous window |
 | `mod`+scroll | Focus next / previous window |
