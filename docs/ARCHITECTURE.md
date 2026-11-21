@@ -29,6 +29,7 @@ ordinary `SetWindowPos` / `ShowWindow` calls.
 | `src/fuzzy.rs` | Fuzzy matching and scoring for the launcher. Pure, unit-tested. |
 | `src/calc.rs` | The launcher's calculator: a small expression evaluator. Pure, unit-tested. |
 | `src/emoji.rs` | The emoji list and search for the launcher's picker. |
+| `src/orc.rs` | The orc.pictures catalog client: fetching, validation, search and the download cache. |
 | `src/gfx.rs` | Shared Direct2D / DirectWrite / WIC plumbing for the bar and the launcher. |
 | `src/theme.rs` | Derives colour palettes from the wallpaper or accent colour, and detects changes. |
 | `src/win.rs` | Thin wrappers over the Win32 / DWM APIs, plus the "is this a normal app window?" heuristic. |
@@ -163,6 +164,18 @@ only carry it out (show, hide, launch) after releasing it. Those calls
 re-enter the window procedure synchronously, through `WM_ACTIVATE` for
 example. If the state happens to be busy, input messages are re-posted
 instead of dropped.
+
+### orc.pictures
+
+`src/orc.rs` downloads `https://orc.pictures/catalog.json` with
+`URLDownloadToFileW`, so no HTTP library is needed. Slugs, revisions and
+asset paths are validated before use, because they become file names in the
+cache. Downloads go to a uniquely named temporary file and are kept only if
+they start with the right magic bytes (`GIF8…`, JPEG `FF D8 FF`). Posters are
+fetched in the background as rows become visible, and the launcher redraws
+when each one arrives. A chosen GIF is put on the clipboard as `CF_HDROP`
+and pasted with a synthesized Ctrl+V into the window that had focus before
+the launcher opened.
 
 ## Theming
 

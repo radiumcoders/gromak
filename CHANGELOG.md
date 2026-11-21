@@ -29,6 +29,8 @@ All notable changes to this project are documented here. The format follows
 - Launcher calculator (type maths; Enter copies the result) and emoji picker
   (`:` prefix; Enter types the emoji), with a configurable emoji font
   (`[launcher] emoji_font`, including .ttf files such as Twemoji).
+- orc.pictures GIF picker in the launcher (`gif ` prefix): thumbnails, Enter
+  pastes the GIF as a file, Shift+Enter copies its link.
 - Mouse-wheel bindings (`wheelup` / `wheeldown`): `mod`+scroll cycles windows,
   `mod+Shift`+scroll switches workspaces.
 - Focus follows mouse (`general.focus_follows_mouse`), with the pointer

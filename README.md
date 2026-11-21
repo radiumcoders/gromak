@@ -40,6 +40,8 @@ floating bar per monitor, a coloured border on the focused window, and nothing e
 - **App launcher.** `mod+Space` opens a rofi-style search panel with every
   installed app (desktop and Store), real icons, fuzzy matching and
   most-used-first ranking. If nothing matches, Enter runs what you typed.
+  It also has a calculator, an emoji picker (`:`) and an
+  [orc.pictures](https://orc.pictures) GIF picker (`gif `).
 - **Floating island bar.** Translucent, rounded islands for workspaces, the
   focused window's icon and title, and the date and time. The space between
   them is see-through and click-through.
@@ -211,6 +213,21 @@ emoji_font = "fonts/Twemoji.Mozilla.ttf"   # relative to the config folder
 
 Download `Twemoji.Mozilla.ttf` from
 [mozilla/twemoji-colr](https://github.com/mozilla/twemoji-colr/releases).
+
+#### GIF picker (orc.pictures)
+
+Type `gif ` followed by a search, such as `gif angry` or `gif fire`, to
+browse the [orc.pictures](https://orc.pictures) reaction-GIF catalog, with
+thumbnails. **Enter** pastes the GIF into the window you were using.
+**Shift+Enter** copies its link instead.
+
+The GIF goes on the clipboard as a file, the same way Explorer copies one,
+so it stays animated when pasted into Discord, Slack, a browser upload field
+or a folder. The catalog, thumbnails and GIFs are cached in
+`%LOCALAPPDATA%\tessera\orc\`. Each file is downloaded once, and the catalog
+is refreshed every six hours. GIFs are made by
+[OrcDev](https://orcdev.com) and fetched from the public site; tessera does
+not bundle any of them.
 
 ### Theme
 
