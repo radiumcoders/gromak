@@ -705,3 +705,23 @@ pub fn set_clipboard_files(paths: &[std::path::PathBuf]) -> bool {
         ok
     }
 }
+
+/// `dwExtraInfo` tessera puts on keys it injects to replay a swallowed key,
+/// so its own keyboard hook can recognise and pass them.
+pub const INJECTED_MARK: usize = 0x7E55_E7A0;
+
+/// Replays a swallowed key release (`vk`, e.g. the Win key) behind an
+/// unassigned key (0xE8), so the shell does not see a lone tap.
+pub fn replay_masked_key_up(vk: u16) {
+    unsafe {
+        let mut inputs: [INPUT; 3] = zeroed();
+        let keys = [(0xE8, 0), (0xE8, KEYEVENTF_KEYUP), (vk, KEYEVENTF_KEYUP)];
+        for (input, (key, flags)) in inputs.iter_mut().zip(keys) {
+            input.r#type = INPUT_KEYBOARD;
+            input.Anonymous.ki.wVk = key;
+            input.Anonymous.ki.dwFlags = flags;
+            input.Anonymous.ki.dwExtraInfo = INJECTED_MARK;
+        }
+        SendInput(inputs.len() as u32, inputs.as_ptr(), size_of::<INPUT>() as i32);
+    }
+}

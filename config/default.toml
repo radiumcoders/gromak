@@ -20,6 +20,10 @@ hide_taskbar = false
 # Focus the window under the mouse pointer, like Hyprland's follow_mouse.
 # The pointer also jumps to windows you focus with the keyboard.
 focus_follows_mouse = false
+# What a lone tap of the Win key does: "tap" opens Start (Windows' default),
+# "double_tap" does nothing unless you tap twice quickly, "never" never opens
+# it. Win+key combinations are not affected.
+start_menu = "tap"
 
 [theme]
 # Where colours come from:

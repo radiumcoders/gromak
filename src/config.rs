@@ -42,6 +42,19 @@ pub struct Config {
     pub rules: Vec<Rule>,
 }
 
+/// What a lone tap of the Win key does.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StartMenu {
+    /// Opens Start (Windows' default).
+    #[default]
+    Tap,
+    /// Does nothing; two quick taps open Start.
+    DoubleTap,
+    /// Never opens Start.
+    Never,
+}
+
 /// Where tessera's colours come from.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -84,6 +97,8 @@ pub struct General {
     pub hide_taskbar: bool,
     /// Focus the window under the mouse pointer as it moves.
     pub focus_follows_mouse: bool,
+    /// What a lone press of the Win key does.
+    pub start_menu: StartMenu,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -205,6 +220,7 @@ impl Default for General {
             terminal: "wt.exe".into(),
             hide_taskbar: false,
             focus_follows_mouse: false,
+            start_menu: StartMenu::Tap,
         }
     }
 }

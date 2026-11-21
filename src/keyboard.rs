@@ -13,10 +13,11 @@
 
 use crate::config::{MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN};
 use std::ptr::{null, null_mut};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, Ordering};
 use std::sync::Mutex;
 use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows_sys::Win32::System::SystemInformation::GetTickCount64;
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_RCONTROL, VK_RMENU, VK_RSHIFT,
@@ -44,6 +45,69 @@ static HELD: [AtomicBool; 256] = [const { AtomicBool::new(false) }; 256];
 static THREAD_ID: AtomicU32 = AtomicU32::new(0);
 /// Asks the hook thread to send the menu-mask key.
 const WM_MASK: u32 = WM_APP + 50;
+/// Asks the hook thread to replay a swallowed Win release behind a mask key.
+const WM_SUPPRESS_WIN: u32 = WM_APP + 52;
+
+/// What a lone press of the Win key does (`general.start_menu`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StartMenu {
+    /// Windows' default: a tap opens Start.
+    Tap,
+    /// A tap does nothing; two taps in quick succession open Start.
+    DoubleTap,
+    /// Taps never open Start.
+    Never,
+}
+
+/// Two Win taps closer together than this count as a double tap.
+const DOUBLE_TAP_MS: u64 = 400;
+
+static START_MENU: AtomicU8 = AtomicU8::new(0);
+/// The Win key is down.
+static WIN_DOWN: AtomicBool = AtomicBool::new(false);
+/// Something else was pressed (or the mouse used) while Win was down, so the
+/// release is part of a combination, not a lone tap.
+static WIN_COMBO: AtomicBool = AtomicBool::new(false);
+/// When the last suppressed lone tap happened (GetTickCount64).
+static LAST_TAP: AtomicU64 = AtomicU64::new(0);
+
+pub fn set_start_menu(mode: StartMenu) {
+    START_MENU.store(mode as u8, Ordering::Relaxed);
+}
+
+/// Marks the current Win press as a combination (used by the mouse hook for
+/// Win+wheel and Win+drag).
+pub fn note_win_combo() {
+    if WIN_DOWN.load(Ordering::Relaxed) {
+        WIN_COMBO.store(true, Ordering::Relaxed);
+    }
+}
+
+fn is_win_key(vk: u32) -> bool {
+    vk == VK_LWIN as u32 || vk == VK_RWIN as u32
+}
+
+/// On a Win release: should this lone tap be kept from opening Start?
+fn suppress_lone_win_tap() -> bool {
+    if WIN_COMBO.load(Ordering::Relaxed) {
+        return false;
+    }
+    match START_MENU.load(Ordering::Relaxed) {
+        x if x == StartMenu::Never as u8 => true,
+        x if x == StartMenu::DoubleTap as u8 => {
+            let now = unsafe { GetTickCount64() };
+            let last = LAST_TAP.swap(now, Ordering::Relaxed);
+            if now.saturating_sub(last) <= DOUBLE_TAP_MS {
+                // Second tap: let it through, and do not chain a third.
+                LAST_TAP.store(0, Ordering::Relaxed);
+                false
+            } else {
+                true
+            }
+        }
+        _ => false,
+    }
+}
 
 /// Replaces the set of bindings the hook intercepts.
 pub fn set_binds(binds: Vec<HookBind>) {
@@ -61,8 +125,10 @@ pub fn start() {
         }
         let mut msg: MSG = std::mem::zeroed();
         while GetMessageW(&mut msg, null_mut(), 0, 0) > 0 {
-            if msg.message == WM_MASK {
-                crate::win::mask_menu_key();
+            match msg.message {
+                WM_MASK => crate::win::mask_menu_key(),
+                WM_SUPPRESS_WIN => crate::win::replay_masked_key_up(msg.wParam as u16),
+                _ => {}
             }
         }
         UnhookWindowsHookEx(hook);
@@ -123,6 +189,28 @@ unsafe extern "system" fn hook_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESUL
         let kb = &*(lp as *const KBDLLHOOKSTRUCT);
         let vk = kb.vkCode;
         let msg = wp as u32;
+        let down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
+        // Our own injected keys (the Win-tap suppression) pass untouched.
+        if kb.dwExtraInfo == crate::win::INJECTED_MARK {
+            return CallNextHookEx(null_mut(), code, wp, lp);
+        }
+        if is_win_key(vk) {
+            if down {
+                if !WIN_DOWN.swap(true, Ordering::Relaxed) {
+                    WIN_COMBO.store(false, Ordering::Relaxed);
+                }
+            } else {
+                WIN_DOWN.store(false, Ordering::Relaxed);
+                if suppress_lone_win_tap() {
+                    // Swallow this release; the hook thread replays it behind
+                    // an unassigned key so the shell does not see a lone tap.
+                    PostThreadMessageW(THREAD_ID.load(Ordering::Relaxed), WM_SUPPRESS_WIN, vk as usize, 0);
+                    return 1;
+                }
+            }
+        } else if down && WIN_DOWN.load(Ordering::Relaxed) {
+            WIN_COMBO.store(true, Ordering::Relaxed);
+        }
         if vk < 256 && !is_modifier(vk) {
             let held = &HELD[vk as usize];
             if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
@@ -145,6 +233,9 @@ unsafe extern "system" fn hook_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESUL
                     }
                     return 1;
                 }
+                // Not a binding: whatever we thought was held is not (a
+                // missed key-up would otherwise eat this key's release).
+                held.store(false, Ordering::Relaxed);
             } else if (msg == WM_KEYUP || msg == WM_SYSKEYUP) && held.swap(false, Ordering::Relaxed) {
                 return 1;
             }

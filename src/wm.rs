@@ -289,6 +289,11 @@ impl Wm {
             info!("{} binding(s) handled by the keyboard hook", hooked.len());
         }
         keyboard::set_binds(hooked);
+        keyboard::set_start_menu(match self.cfg.general.start_menu {
+            config::StartMenu::Tap => keyboard::StartMenu::Tap,
+            config::StartMenu::DoubleTap => keyboard::StartMenu::DoubleTap,
+            config::StartMenu::Never => keyboard::StartMenu::Never,
+        });
         mouse::set_wheel_binds(wheel);
     }
 

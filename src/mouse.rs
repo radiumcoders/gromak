@@ -8,7 +8,7 @@
 
 use crate::config::{MOD_ALT, MOD_WIN, VK_WHEEL_DOWN, VK_WHEEL_UP};
 use std::ptr::{null, null_mut};
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
 use std::sync::Mutex;
 use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -44,6 +44,8 @@ static WHEEL_BINDS: Mutex<Vec<WheelBind>> = Mutex::new(Vec::new());
 /// Wheel movement not yet turned into a notch (precision touchpads send
 /// many small deltas).
 static WHEEL_ACCUMULATED: AtomicI32 = AtomicI32::new(0);
+/// When the last wheel event arrived (GetTickCount64), to reset leftovers.
+static WHEEL_LAST: AtomicU64 = AtomicU64::new(0);
 /// Asks the hook thread to send the menu-mask key.
 const WM_MASK: u32 = WM_APP + 51;
 
@@ -126,6 +128,20 @@ unsafe fn handle_wheel(lp: LPARAM) -> bool {
     }
     let info = &*(lp as *const MSLLHOOKSTRUCT);
     let delta = (info.mouseData >> 16) as u16 as i16 as i32;
+    // Only swallow wheel events in a direction that is actually bound.
+    let vk = if delta > 0 { VK_WHEEL_UP } else { VK_WHEEL_DOWN };
+    if !binds.iter().any(|b| b.vk == vk) {
+        return false;
+    }
+    crate::keyboard::note_win_combo();
+    // Start over after a pause or a change of direction, so leftovers from
+    // an earlier gesture never eat a notch.
+    let now = windows_sys::Win32::System::SystemInformation::GetTickCount64();
+    let last = WHEEL_LAST.swap(now, Ordering::Relaxed);
+    let previous = WHEEL_ACCUMULATED.load(Ordering::Relaxed);
+    if now.saturating_sub(last) > 300 || previous.signum() * delta.signum() < 0 {
+        WHEEL_ACCUMULATED.store(0, Ordering::Relaxed);
+    }
     let mut total = WHEEL_ACCUMULATED.fetch_add(delta, Ordering::Relaxed) + delta;
     let notch = WHEEL_DELTA as i32;
     while total.abs() >= notch {
