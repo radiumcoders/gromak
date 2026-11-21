@@ -11,7 +11,8 @@
 
 use crate::bar::{Bar, BarState, Style, WsItem};
 use crate::config::{
-    self, Bind, Command, Config, FsMode, ThemeMode, ThemeSource, WsTarget, MOD_ALT, MOD_WIN, WORKSPACES,
+    self, Bind, Command, Config, FsMode, ThemeMode, ThemeSource, WsTarget, MOD_ALT, MOD_WIN, VK_WHEEL_DOWN,
+    VK_WHEEL_UP, WORKSPACES,
 };
 use crate::keyboard::{self, HookBind};
 use crate::launcher;
@@ -259,9 +260,14 @@ impl Wm {
         // (which also works while an elevated window has focus) and falls
         // back to the hook if another app already owns the combination.
         let mut hooked = Vec::new();
+        let mut wheel = Vec::new();
         for (i, bind) in self.binds.iter().enumerate() {
             let id = i as i32 + 1;
             let (mods, vk) = (bind.hotkey.mods, bind.hotkey.vk);
+            if vk == VK_WHEEL_UP || vk == VK_WHEEL_DOWN {
+                wheel.push(mouse::WheelBind { mods, vk, id });
+                continue;
+            }
             let use_hook =
                 mods & MOD_WIN != 0 || unsafe { RegisterHotKey(self.ctrl as _, id, mods | MOD_NOREPEAT, vk) } == 0;
             if use_hook {
@@ -275,6 +281,7 @@ impl Wm {
             info!("{} binding(s) handled by the keyboard hook", hooked.len());
         }
         keyboard::set_binds(hooked);
+        mouse::set_wheel_binds(wheel);
     }
 
     fn unregister_hotkeys(&mut self) {
@@ -282,6 +289,7 @@ impl Wm {
             unsafe { UnregisterHotKey(self.ctrl as _, i as i32 + 1) };
         }
         keyboard::set_binds(Vec::new());
+        mouse::set_wheel_binds(Vec::new());
         self.binds.clear();
     }
 

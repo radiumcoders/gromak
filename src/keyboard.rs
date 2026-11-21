@@ -84,7 +84,7 @@ fn is_down(vk: u16) -> bool {
     unsafe { GetAsyncKeyState(vk as i32) as u16 & 0x8000 != 0 }
 }
 
-fn current_mods() -> u32 {
+pub fn current_mods() -> u32 {
     let mut mods = 0;
     if is_down(VK_MENU) {
         mods |= MOD_ALT;

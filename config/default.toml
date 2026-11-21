@@ -72,6 +72,9 @@ title = "Picture-in-Picture"
 float = true
 
 # Keybindings: "modifiers+key" = "dispatcher [argument]".
+# Keys include letters, digits, f1-f24, arrows, return, space, tab and
+# punctuation names (comma, period, ...), plus wheelup / wheeldown for the
+# mouse wheel.
 # Defining a [binds] table replaces all of these defaults.
 #
 # Dispatchers:
@@ -129,6 +132,12 @@ float = true
 "mod+shift+n" = "cycleprev"
 "mod+period" = "workspace e+1"
 "mod+comma" = "workspace e-1"
+
+# Mouse wheel (hold mod and scroll).
+"mod+wheeldown" = "cyclenext"
+"mod+wheelup" = "cycleprev"
+"mod+shift+wheeldown" = "workspace e+1"
+"mod+shift+wheelup" = "workspace e-1"
 
 "mod+1" = "workspace 1"
 "mod+2" = "workspace 2"

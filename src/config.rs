@@ -18,6 +18,11 @@ pub const MOD_CONTROL: u32 = 0x2;
 pub const MOD_SHIFT: u32 = 0x4;
 pub const MOD_WIN: u32 = 0x8;
 
+/// Pseudo key codes for the mouse wheel (outside the virtual-key range), usable
+/// in bindings as `wheelup` and `wheeldown`.
+pub const VK_WHEEL_UP: u32 = 0x1_0001;
+pub const VK_WHEEL_DOWN: u32 = 0x1_0002;
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -357,6 +362,8 @@ fn parse_key(s: &str) -> Option<u32> {
         "backslash" => 0xDC,
         "bracketright" => 0xDD,
         "quote" => 0xDE,
+        "wheelup" | "scrollup" => VK_WHEEL_UP,
+        "wheeldown" | "scrolldown" => VK_WHEEL_DOWN,
         _ => return None,
     })
 }
@@ -526,6 +533,8 @@ mod tests {
         assert_eq!(parse_hotkey("win+return", 0), Ok(Hotkey { mods: MOD_WIN, vk: 0x0D }));
         assert_eq!(parse_hotkey("ctrl+alt+f12", 0).unwrap().vk, 0x7B);
         assert_eq!(parse_hotkey("mod+0", MOD_WIN).unwrap().vk, '0' as u32);
+        assert_eq!(parse_hotkey("mod+wheelup", MOD_WIN), Ok(Hotkey { mods: MOD_WIN, vk: VK_WHEEL_UP }));
+        assert_eq!(parse_hotkey("win+shift+scrolldown", 0).unwrap().vk, VK_WHEEL_DOWN);
         assert!(parse_hotkey("hyper+a", 0).is_err());
         assert!(parse_hotkey("mod+f25", 0).is_err());
     }
