@@ -1,8 +1,8 @@
-# tessera — a minimal tiling window manager for Windows
+# gromak — a minimal tiling window manager for Windows
 #
-# This file lives at %USERPROFILE%\.config\tessera\tessera.toml and is created
+# This file lives at %USERPROFILE%\.config\gromak\gromak.toml and is created
 # with these defaults on first launch. Press mod+shift+r to reload it.
-# Run `tessera --default-config` to print the pristine defaults again.
+# Run `gromak --default-config` to print the pristine defaults again.
 
 [general]
 # Pixels between neighbouring windows.
@@ -15,7 +15,7 @@ gaps_out = 6
 mod = "alt"
 # The command `exec $terminal` launches.
 terminal = "wt.exe"
-# Hide the Windows taskbar while tessera runs. It is restored on exit.
+# Hide the Windows taskbar while gromak runs. It is restored on exit.
 hide_taskbar = false
 # Focus the window under the mouse pointer, like Hyprland's follow_mouse.
 # The pointer also jumps to windows you focus with the keyboard.
@@ -89,7 +89,7 @@ gif_style = "orc"
 # Window rules. A rule matches on any combination of `exe`, `class` and
 # `title` (case-insensitive; `title` matches a substring), and can make a
 # window `float`, `ignore` it entirely, or send it to a `workspace` (1-10).
-# Use `tessera --list-windows` to find the exe/class/title of open windows.
+# Use `gromak --list-windows` to find the exe/class/title of open windows.
 
 [[rules]]
 class = "#32770" # standard Windows dialog boxes
@@ -120,7 +120,7 @@ float = true
 #   movetoworkspace <n>          move the focused window there and follow it
 #   movetoworkspacesilent <n>    move the focused window there, stay here
 #   reload                       reload this file
-#   exit                         quit tessera, restoring every window
+#   exit                         quit gromak, restoring every window
 [binds]
 "mod+return" = "exec $terminal"
 "mod+space" = "launcher"

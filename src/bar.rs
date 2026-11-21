@@ -38,7 +38,7 @@ use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT};
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
-const CLASS: &str = "tessera_bar";
+const CLASS: &str = "gromak_bar";
 const CLOCK_TIMER: usize = 1;
 const WM_MOUSELEAVE: u32 = 0x02A3;
 const NOTICE_DURATION: Duration = Duration::from_secs(5);
@@ -185,7 +185,7 @@ pub struct Bar {
 impl Bar {
     pub fn new(rect: Rect, style: Style) -> Option<Bar> {
         let class = wide(CLASS);
-        let title = wide("tessera bar");
+        let title = wide("gromak bar");
         let hwnd = unsafe {
             CreateWindowExW(
                 WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,

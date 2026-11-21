@@ -1,7 +1,7 @@
 //! A tiny file + stderr logger.
 //!
 //! Release builds have no console, so everything also goes to
-//! `%LOCALAPPDATA%\tessera\tessera.log` (truncated on every start).
+//! `%LOCALAPPDATA%\gromak\gromak.log` (truncated on every start).
 
 use std::fs::File;
 use std::io::Write;
@@ -19,10 +19,10 @@ pub fn disable_stderr() {
     STDERR.store(false, Ordering::Relaxed);
 }
 
-/// `%LOCALAPPDATA%\tessera`, where runtime state and logs live.
+/// `%LOCALAPPDATA%\gromak`, where runtime state and logs live.
 pub fn data_dir() -> PathBuf {
     let base = std::env::var_os("LOCALAPPDATA").or_else(|| std::env::var_os("TEMP")).unwrap_or_else(|| ".".into());
-    PathBuf::from(base).join("tessera")
+    PathBuf::from(base).join("gromak")
 }
 
 pub fn init(path: &Path) {

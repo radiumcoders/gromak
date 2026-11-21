@@ -35,5 +35,5 @@ jobs:
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: tessera-${{ github.sha }}
-          path: target/release/tessera.exe
+          name: gromak-${{ github.sha }}
+          path: target/release/gromak.exe

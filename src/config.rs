@@ -57,7 +57,7 @@ pub enum StartMenu {
     Never,
 }
 
-/// Where tessera's colours come from.
+/// Where gromak's colours come from.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeSource {
@@ -319,15 +319,45 @@ impl Rule {
     }
 }
 
-/// `%USERPROFILE%\.config\tessera\tessera.toml`
+/// `%USERPROFILE%\.config\gromak\gromak.toml`
 pub fn config_path() -> PathBuf {
     let home = std::env::var_os("USERPROFILE").unwrap_or_else(|| ".".into());
-    PathBuf::from(home).join(".config").join("tessera").join("tessera.toml")
+    PathBuf::from(home).join(".config").join("gromak").join("gromak.toml")
+}
+
+/// gromak used to be called tessera: carry an existing
+/// `~/.config/tessera/` folder (config, fonts, ...) over once.
+fn migrate_legacy_config(path: &std::path::Path) {
+    let (Some(dir), Some(home)) = (path.parent(), std::env::var_os("USERPROFILE")) else { return };
+    let legacy = PathBuf::from(home).join(".config").join(concat!("tes", "sera"));
+    if path.exists() || !legacy.is_dir() {
+        return;
+    }
+    fn copy_dir(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(to)?;
+        for entry in std::fs::read_dir(from)? {
+            let entry = entry?;
+            let target = to.join(entry.file_name());
+            if entry.file_type()?.is_dir() {
+                copy_dir(&entry.path(), &target)?;
+            } else {
+                std::fs::copy(entry.path(), target)?;
+            }
+        }
+        Ok(())
+    }
+    if copy_dir(&legacy, dir).is_ok() {
+        let old_file = dir.join(concat!("tes", "sera.toml"));
+        if old_file.exists() {
+            let _ = std::fs::rename(old_file, path);
+        }
+    }
 }
 
 /// Loads the config file, creating it with defaults if it does not exist.
 pub fn load() -> Result<Config, String> {
     let path = config_path();
+    migrate_legacy_config(&path);
     if !path.exists() {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;

@@ -1,4 +1,4 @@
-//! Shared Direct2D / DirectWrite / WIC plumbing for tessera's own windows
+//! Shared Direct2D / DirectWrite / WIC plumbing for gromak's own windows
 //! (the bar and the launcher).
 //!
 //! Both are per-pixel-alpha layered windows: a frame is drawn with Direct2D

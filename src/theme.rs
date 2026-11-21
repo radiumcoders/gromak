@@ -1,4 +1,4 @@
-//! Dynamic theming: derives tessera's colours from the desktop wallpaper or
+//! Dynamic theming: derives gromak's colours from the desktop wallpaper or
 //! the Windows accent colour, and follows Windows' light/dark mode.
 //!
 //! The colour science is deliberately simple and lives in pure functions
@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 
-/// A full set of tessera colours, as `COLORREF`s (0x00BBGGRR).
+/// A full set of gromak colours, as `COLORREF`s (0x00BBGGRR).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Palette {
     pub background: u32,

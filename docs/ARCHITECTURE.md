@@ -1,11 +1,11 @@
 # Architecture
 
-tessera is a single-threaded Win32 program. It does not inject code into other
+gromak is a single-threaded Win32 program. It does not inject code into other
 processes. It watches the system through WinEvent hooks and moves windows with
 ordinary `SetWindowPos` / `ShowWindow` calls.
 
 ```
-                ┌────────────────────────── tessera.exe (one thread) ──────────────────────────┐
+                ┌────────────────────────── gromak.exe (one thread) ──────────────────────────┐
  WinEvent hooks │  win_event_proc ──PostMessage(WM_APP_EVENT)──┐                                │
  (out of        │                                              ▼                                │
   context)      │  RegisterHotKey ──────── WM_HOTKEY ────► control window ──► message loop ──► Wm │
@@ -61,22 +61,22 @@ follow their monitor (matched by handle, then by position). The workspaces
 of a vanished monitor merge into the same-numbered workspaces of the first
 monitor. A visibility sync then shows the windows of every shown workspace.
 
-Windows on a workspace that no monitor shows are hidden with `SW_HIDE`. tessera prefers this
+Windows on a workspace that no monitor shows are hidden with `SW_HIDE`. gromak prefers this
 over cloaking or minimizing because it is reliable across apps and keeps those
 windows out of Alt+Tab.
 
-Hiding windows is risky: if tessera died, they would be invisible. So:
+Hiding windows is risky: if gromak died, they would be invisible. So:
 
-1. Every window tessera hides is recorded in `%LOCALAPPDATA%\tessera\hidden.txt`
+1. Every window gromak hides is recorded in `%LOCALAPPDATA%\gromak\hidden.txt`
    (handle plus window class), flushed after each handled message.
 2. On a normal exit, Ctrl+C, logoff, or shutdown, every recorded window is shown again.
-3. On startup, and with `tessera --restore`, windows still listed in the file
+3. On startup, and with `gromak --restore`, windows still listed in the file
    are shown again. A window is only shown if its handle still exists and its
    class matches, so a recycled handle is never touched.
 
 Show and hide are synchronous, except for hung windows, so that
 `IsWindowVisible` is accurate when the queued SHOW/HIDE events are processed.
-That lets the event handlers tell tessera's own visibility changes apart from
+That lets the event handlers tell gromak's own visibility changes apart from
 an app hiding or re-showing itself.
 
 ## Layout
@@ -110,7 +110,7 @@ that have a caption or a sizing frame and a title. It rejects tool windows,
 no-activate windows, and known shell classes (taskbar, desktop, Start menu, and
 so on). On top of that:
 
-- Windows of elevated processes are ignored unless tessera is elevated. UIPI
+- Windows of elevated processes are ignored unless gromak is elevated. UIPI
   would block moving them anyway.
 - Windows with an owner, or that cannot be resized, float.
 - User rules can float a window, ignore it, or assign its workspace.
@@ -132,7 +132,7 @@ Bindings take one of two routes:
   and swallows both the key-down and the matching key-up. Win+L cannot be
   intercepted, because the secure desktop handles it.
 
-When a binding includes Alt or Win, tessera sends an unassigned virtual key
+When a binding includes Alt or Win, gromak sends an unassigned virtual key
 (`0xE8`) right after it fires. Otherwise, releasing the modifier would look
 like a lone Alt or Win press to the focused app, which then opens its menu bar
 or the Start menu.
@@ -188,7 +188,7 @@ the launcher opened.
 ## Theming
 
 `src/theme.rs` turns the wallpaper into a palette. WIC decodes the image and
-downsamples it to about 96 px. If the configured file can't be read, tessera
+downsamples it to about 96 px. If the configured file can't be read, gromak
 uses Windows' `TranscodedWallpaper` copy, then the solid desktop colour.
 Pixels are binned by hue and weighted by chroma squared, so vivid colours
 dominate and grey, near-black and near-white pixels are ignored. The

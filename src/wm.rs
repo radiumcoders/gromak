@@ -139,8 +139,8 @@ pub struct Wm {
     /// Window rectangles when a mouse move/resize started (to tell them apart).
     move_start: HashMap<Hwnd, Rect>,
     drag: Option<Drag>,
-    /// The rectangle tessera last gave each window, so that a window covering
-    /// its monitor because *tessera* put it there is not mistaken for an app
+    /// The rectangle gromak last gave each window, so that a window covering
+    /// its monitor because *gromak* put it there is not mistaken for an app
     /// that went fullscreen by itself.
     placed: std::cell::RefCell<HashMap<Hwnd, Rect>>,
     /// Windows currently gliding to a new rectangle.
@@ -489,7 +489,7 @@ impl Wm {
         (v as f32 * self.monitors[mi].info.scale).round() as i32
     }
 
-    /// The part of the monitor tessera lays out into, before gaps.
+    /// The part of the monitor gromak lays out into, before gaps.
     fn base_rect(&self, mi: usize) -> Rect {
         let info = &self.monitors[mi].info;
         if self.cfg.general.hide_taskbar {
@@ -562,7 +562,7 @@ impl Wm {
         let info = win::WindowInfo::of(h);
         if !self.elevated && win::process_elevated(info.pid) {
             info!(
-                "ignoring elevated window \"{}\" ({}); run tessera as administrator to manage it",
+                "ignoring elevated window \"{}\" ({}); run gromak as administrator to manage it",
                 info.title, info.exe
             );
             self.ignored.insert(h);
@@ -670,7 +670,7 @@ impl Wm {
                 continue;
             }
             // Leave apps that went fullscreen by themselves (browser F11)
-            // alone, but not windows tessera itself made monitor-sized.
+            // alone, but not windows gromak itself made monitor-sized.
             let placed_by_us = self.placed.borrow().get(&h) == Some(&monitor);
             if win::is_app_fullscreen(h) && !placed_by_us {
                 continue;
@@ -976,7 +976,7 @@ impl Wm {
         {
             return;
         }
-        // Never take focus away from a window tessera does not manage: system
+        // Never take focus away from a window gromak does not manage: system
         // overlays (the Win+Shift+S snipping overlay, which is see-through to
         // hit testing and closes when it loses focus; the Start menu; UAC)
         // and other apps' popups must keep it while the pointer moves.
@@ -1397,7 +1397,7 @@ impl Wm {
         if !self.windows.contains_key(&h) {
             return;
         }
-        // Windows tessera hid itself are still ours, whatever else happens to
+        // Windows gromak hid itself are still ours, whatever else happens to
         // them (cloaking included): dropping them would lose them for good.
         if hidden::contains(h) {
             return;
@@ -1463,8 +1463,8 @@ impl Wm {
     }
 }
 
-/// Windows tessera has hidden, mirrored to `%LOCALAPPDATA%\tessera\hidden.txt`
-/// so they can be shown again if tessera dies without cleaning up.
+/// Windows gromak has hidden, mirrored to `%LOCALAPPDATA%\gromak\hidden.txt`
+/// so they can be shown again if gromak dies without cleaning up.
 mod hidden {
     use crate::win::{self, Hwnd};
     use std::collections::BTreeMap;
@@ -1507,7 +1507,7 @@ mod hidden {
         }
     }
 
-    /// Shows every window tessera has hidden.
+    /// Shows every window gromak has hidden.
     pub fn restore_all() {
         let all = std::mem::take(&mut *set());
         for (&h, class) in &all {
@@ -1541,18 +1541,21 @@ mod hidden {
     /// Shows windows a previous, crashed session left hidden.
     /// Returns how many were restored.
     pub fn recover() -> usize {
-        let path = path();
-        let Ok(text) = std::fs::read_to_string(&path) else { return 0 };
+        // Also the list a previous version kept under its old name (tessera).
+        let legacy = crate::log::data_dir().parent().map(|base| base.join(concat!("tes", "sera")).join("hidden.txt"));
         let mut restored = 0;
-        for line in text.lines() {
-            let Some((h, class)) = line.split_once('\t') else { continue };
-            let Ok(h) = h.parse::<Hwnd>() else { continue };
-            if win::is_window(h) && win::class(h) == class && !win::is_visible(h) {
-                win::show(h);
-                restored += 1;
+        for path in std::iter::once(path()).chain(legacy) {
+            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            for line in text.lines() {
+                let Some((h, class)) = line.split_once('\t') else { continue };
+                let Ok(h) = h.parse::<Hwnd>() else { continue };
+                if win::is_window(h) && win::class(h) == class && !win::is_visible(h) {
+                    win::show(h);
+                    restored += 1;
+                }
             }
+            let _ = std::fs::remove_file(&path);
         }
-        let _ = std::fs::remove_file(&path);
         restored
     }
 }

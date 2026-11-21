@@ -1,4 +1,4 @@
-//! tessera — a minimal, keyboard-driven tiling window manager for Windows.
+//! gromak — a minimal, keyboard-driven tiling window manager for Windows.
 //!
 //! The window manager runs on the main thread: a hidden control window
 //! receives global hotkeys, WinEvent hooks and the keyboard hook thread post
@@ -75,18 +75,18 @@ pub fn post_to_ctrl(msg: u32, wparam: usize, lparam: isize) {
 }
 
 const USAGE: &str = "\
-tessera - a minimal tiling window manager for Windows
+gromak - a minimal tiling window manager for Windows
 
 USAGE:
-    tessera                  start the window manager
-    tessera --list-windows   print exe, class and title of tileable windows
-    tessera --check-config   validate the config file
-    tessera --config-path    print where the config file lives
-    tessera --default-config print the default config
-    tessera --restore        show windows a crashed session left hidden
-                             (refuses while tessera runs; add --force)
-    tessera --version        print the version
-    tessera --help           print this help
+    gromak                  start the window manager
+    gromak --list-windows   print exe, class and title of tileable windows
+    gromak --check-config   validate the config file
+    gromak --config-path    print where the config file lives
+    gromak --default-config print the default config
+    gromak --restore        show windows a crashed session left hidden
+                             (refuses while gromak runs; add --force)
+    gromak --version        print the version
+    gromak --help           print this help
 ";
 
 fn main() {
@@ -99,13 +99,13 @@ fn main() {
     // Check for a running instance before opening (and truncating) the log,
     // so a second launch does not wipe the running instance's log.
     if !acquire_single_instance() {
-        error!("tessera is already running");
+        error!("gromak is already running");
         return;
     }
-    log::init(&log::data_dir().join("tessera.log"));
+    log::init(&log::data_dir().join("gromak.log"));
     std::panic::set_hook(Box::new(|info| error!("{info}")));
     win::set_dpi_awareness();
-    info!("tessera {} starting", env!("CARGO_PKG_VERSION"));
+    info!("gromak {} starting", env!("CARGO_PKG_VERSION"));
 
     let restored = wm::recover_hidden();
     if restored > 0 {
@@ -155,7 +155,7 @@ fn main() {
 fn run_cli(args: &[String]) -> i32 {
     match args[0].as_str() {
         "-h" | "--help" => print!("{USAGE}"),
-        "-V" | "--version" => println!("tessera {}", env!("CARGO_PKG_VERSION")),
+        "-V" | "--version" => println!("gromak {}", env!("CARGO_PKG_VERSION")),
         "--default-config" => print!("{}", config::DEFAULT_CONFIG),
         "--config-path" => println!("{}", config::config_path().display()),
         "--check-config" => match config::load() {
@@ -174,10 +174,10 @@ fn run_cli(args: &[String]) -> i32 {
             }
         }
         "--restore" => {
-            // While tessera runs, its windows on other workspaces are hidden on
+            // While gromak runs, its windows on other workspaces are hidden on
             // purpose; showing them behind its back would scramble its state.
             if !acquire_single_instance() && args.get(1).map(String::as_str) != Some("--force") {
-                eprintln!("tessera is running; exit it first (or pass --restore --force)");
+                eprintln!("gromak is running; exit it first (or pass --restore --force)");
                 return 1;
             }
             println!("restored {} window(s)", wm::recover_hidden())
@@ -201,9 +201,9 @@ fn detach_own_console() {
     }
 }
 
-/// Returns false if another tessera instance owns the mutex.
+/// Returns false if another gromak instance owns the mutex.
 fn acquire_single_instance() -> bool {
-    let name = win::wide("Local\\tessera-window-manager");
+    let name = win::wide("Local\\gromak-window-manager");
     unsafe {
         let mutex = CreateMutexW(null(), 1, name.as_ptr());
         // The handle is intentionally leaked: it must live as long as we do.
@@ -266,7 +266,7 @@ fn is_color_set_change(lp: LPARAM) -> bool {
 /// An invisible top-level window: the target for hotkeys and posted
 /// messages, and a receiver for display-change broadcasts.
 fn create_ctrl_window() -> isize {
-    let class = win::wide("tessera_ctrl");
+    let class = win::wide("gromak_ctrl");
     unsafe {
         let mut wc: WNDCLASSW = std::mem::zeroed();
         wc.lpfnWndProc = Some(ctrl_proc);

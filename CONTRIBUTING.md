@@ -1,4 +1,4 @@
-# Contributing to tessera
+# Contributing to gromak
 
 Thanks for your interest! Bug reports, ideas, and pull requests are all welcome.
 
@@ -9,8 +9,8 @@ Thanks for your interest! Bug reports, ideas, and pull requests are all welcome.
 2. Clone and build:
 
    ```powershell
-   git clone https://github.com/radiumcoders/tessera
-   cd tessera
+   git clone https://github.com/radiumcoders/gromak
+   cd gromak
    cargo build
    ```
 
@@ -28,7 +28,7 @@ Run `cargo run` from a terminal. The log streams to that terminal, and
 `Ctrl+C` exits cleanly, restoring every window. If a debugging session ever
 leaves windows hidden, run `cargo run -- --restore`.
 
-Only one instance can run at a time. Exit any installed tessera first
+Only one instance can run at a time. Exit any installed gromak first
 (`mod+Shift+E`).
 
 ## Where things live
@@ -60,8 +60,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). In short:
 Please include:
 
 - your Windows version,
-- tessera's version (`tessera --version`),
+- gromak's version (`gromak --version`),
 - your config (or say you use the defaults),
-- the relevant part of `%LOCALAPPDATA%\tessera\tessera.log`.
+- the relevant part of `%LOCALAPPDATA%\gromak\gromak.log`.
 
-`tessera --list-windows` output helps when a specific app misbehaves.
+`gromak --list-windows` output helps when a specific app misbehaves.

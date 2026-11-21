@@ -61,7 +61,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
-const CLASS: &str = "tessera_launcher";
+const CLASS: &str = "gromak_launcher";
 /// Rows shown at once.
 const MAX_ROWS: usize = 8;
 /// Results kept after filtering (reachable by scrolling).
@@ -333,7 +333,7 @@ fn save_history(history: &HashMap<String, u32>) {
 /// indexing apps in the background.
 pub fn init() {
     let class = wide(CLASS);
-    let title = wide("tessera launcher");
+    let title = wide("gromak launcher");
     let hwnd = unsafe {
         let mut wc: WNDCLASSW = zeroed();
         wc.lpfnWndProc = Some(launcher_proc);

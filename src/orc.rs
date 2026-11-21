@@ -3,7 +3,7 @@
 //! into the window you were using.
 //!
 //! The catalog comes from `https://orc.pictures/catalog.json` and is cached
-//! in `%LOCALAPPDATA%\tessera\orc\`, as are poster thumbnails and GIFs (keyed
+//! in `%LOCALAPPDATA%\gromak\orc\`, as are poster thumbnails and GIFs (keyed
 //! by revision, so each file is downloaded once). Like the site's own Omarchy
 //! picker, a GIF is put on the clipboard as a *file*, so it stays animated
 //! when pasted into Discord, Slack, a browser upload field, and so on.

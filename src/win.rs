@@ -1,4 +1,4 @@
-//! Thin wrappers around the Win32 calls tessera needs.
+//! Thin wrappers around the Win32 calls gromak needs.
 //!
 //! Windows are passed around as `isize` (`Hwnd`) so they can be stored in
 //! hash maps and atomics; they are converted to `HWND` at the call site.
@@ -54,8 +54,8 @@ const IGNORED_CLASSES: &[&str] = &[
     "SysShadow",
     "tooltips_class32",
     "#32768",
-    "tessera_bar",
-    "tessera_ctrl",
+    "gromak_bar",
+    "gromak_ctrl",
 ];
 
 /// UTF-16, NUL-terminated.
@@ -168,7 +168,7 @@ fn token_elevated(process: HANDLE) -> bool {
     }
 }
 
-/// Whether tessera itself runs elevated (as administrator).
+/// Whether gromak itself runs elevated (as administrator).
 pub fn self_elevated() -> bool {
     token_elevated(unsafe { GetCurrentProcess() })
 }
@@ -281,7 +281,7 @@ pub fn is_manageable(h: Hwnd) -> bool {
 }
 
 /// A window that put itself into fullscreen (F11 in a browser, a video
-/// player): no caption and covering its whole monitor. Tessera leaves
+/// player): no caption and covering its whole monitor. Gromak leaves
 /// these alone so the app can manage its own fullscreen state.
 pub fn is_app_fullscreen(h: Hwnd) -> bool {
     if style(h) & WS_CAPTION == WS_CAPTION {
@@ -338,7 +338,7 @@ pub fn raise(h: Hwnd) {
 }
 
 /// `ShowWindow`, synchronous so that visibility checks made right after are
-/// accurate, but asynchronous for hung windows so they cannot block tessera.
+/// accurate, but asynchronous for hung windows so they cannot block gromak.
 fn show_window(h: Hwnd, cmd: SHOW_WINDOW_CMD) {
     unsafe {
         if IsHungAppWindow(hw(h)) != 0 {
@@ -720,7 +720,7 @@ pub fn set_clipboard_files(paths: &[std::path::PathBuf]) -> bool {
     }
 }
 
-/// `dwExtraInfo` tessera puts on keys it injects to replay a swallowed key,
+/// `dwExtraInfo` gromak puts on keys it injects to replay a swallowed key,
 /// so its own keyboard hook can recognise and pass them.
 pub const INJECTED_MARK: usize = 0x7E55_E7A0;
 
@@ -741,7 +741,7 @@ pub fn replay_masked_key_up(vk: u16) {
 }
 
 /// Turns DWM's show/hide transitions (the scale-and-fade when a window
-/// appears or disappears) off or back on for a window. tessera hides and
+/// appears or disappears) off or back on for a window. gromak hides and
 /// shows windows on every workspace switch, so the transitions would play
 /// constantly.
 pub fn set_transitions_disabled(h: Hwnd, disabled: bool) {

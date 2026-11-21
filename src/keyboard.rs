@@ -9,7 +9,7 @@
 //! Limitations inherent to the mechanism:
 //! - Win+L (lock) is handled by the secure desktop and cannot be overridden.
 //! - While an elevated (administrator) window has focus, an unelevated
-//!   tessera does not receive its keyboard input.
+//!   gromak does not receive its keyboard input.
 
 use crate::config::{MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN};
 use std::ptr::{null, null_mut};

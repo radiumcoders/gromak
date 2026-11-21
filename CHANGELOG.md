@@ -41,7 +41,7 @@ All notable changes to this project are documented here. The format follows
 - TOML configuration with commented defaults, validation, and live reload.
 - Multi-monitor and per-monitor DPI support.
 - Crash safety: hidden windows are persisted and restored on exit, logoff,
-  next start, or `tessera --restore`.
+  next start, or `gromak --restore`.
 - CLI: `--list-windows`, `--check-config`, `--config-path`,
   `--default-config`, `--restore`, `--version`, and `--help`.
 - Launcher power actions: lock, sleep, hibernate, sign out, restart and shut
@@ -64,7 +64,7 @@ All notable changes to this project are documented here. The format follows
   crossing to the next monitor.
 - Windows could stay hidden after a monitor came back, after being moved to
   a visible workspace, or after being cloaked while hidden.
-- tessera's own fullscreen could get stuck; resize drags were treated as
+- gromak's own fullscreen could get stuck; resize drags were treated as
   moves; borders were left behind on unmanaged windows.
 - The GIF picker lost its selection while thumbnails loaded, and failed
   thumbnails were re-downloaded continuously.

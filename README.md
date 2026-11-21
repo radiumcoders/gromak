@@ -1,8 +1,8 @@
-# tessera
+# gromak
 
 **A minimal, keyboard-driven tiling window manager for Windows, inspired by Hyprland.**
 
-tessera arranges your windows into a clean dwindle layout with gaps, gives you
+gromak arranges your windows into a clean dwindle layout with gaps, gives you
 ten workspaces you can flip between instantly, and stays out of the way: one
 floating bar per monitor, a coloured border on the focused window, and nothing else.
 
@@ -21,7 +21,7 @@ floating bar per monitor, a coloured border on the focused window, and nothing e
 ```
 
 > **Status:** early (v0.1). It is usable day to day, but expect rough edges.
-> If tessera ever exits unexpectedly, run `tessera --restore` to bring back
+> If gromak ever exits unexpectedly, run `gromak --restore` to bring back
 > windows that were on hidden workspaces.
 
 ## Features
@@ -57,7 +57,7 @@ floating bar per monitor, a coloured border on the focused window, and nothing e
 - **Window rules.** Float, ignore, or pin windows to workspaces by exe, class, or title.
 - **Multi-monitor and per-monitor DPI aware.** Gaps and the bar scale with each display.
 - **Safe.** Hidden windows are tracked on disk and restored on exit, logoff,
-  crash recovery, or `tessera --restore`. No DLL injection and no admin rights required.
+  crash recovery, or `gromak --restore`. No DLL injection and no admin rights required.
 - **Small.** A single executable under 1 MB with no runtime dependencies.
 
 ## Requirements
@@ -68,24 +68,24 @@ floating bar per monitor, a coloured border on the focused window, and nothing e
 ## Install
 
 ```powershell
-git clone https://github.com/radiumcoders/tessera
-cd tessera
+git clone https://github.com/radiumcoders/gromak
+cd gromak
 cargo build --release
-.\target\release\tessera.exe
+.\target\release\gromak.exe
 ```
 
-Copy `target\release\tessera.exe` anywhere you like (for example
-`%LOCALAPPDATA%\Programs\tessera\`).
+Copy `target\release\gromak.exe` anywhere you like (for example
+`%LOCALAPPDATA%\Programs\gromak\`).
 
 ### Start with Windows
 
-Press `Win+R`, run `shell:startup`, and create a shortcut to `tessera.exe` in
+Press `Win+R`, run `shell:startup`, and create a shortcut to `gromak.exe` in
 that folder.
 
 ## Default keybindings
 
 `mod` is **Alt** by default. Set `general.mod` to `"win"` or `"ctrl+alt"` in
-the config to change it. With `mod = "win"`, tessera takes over Windows' own
+the config to change it. With `mod = "win"`, gromak takes over Windows' own
 Win+key shortcuts (Win+1…9, Win+D, …) through a low-level keyboard hook, and
 pressing Win on its own still opens the Start menu. The one exception is
 **Win+L**, which always locks the PC, so use the arrow-key bindings for
@@ -113,13 +113,13 @@ moving focus right.
 | `mod+Shift+F` | True fullscreen |
 | `mod+T` | Toggle the split direction |
 | `mod+Shift+R` | Reload the config |
-| `mod+Shift+E` | Exit tessera (restores all windows) |
+| `mod+Shift+E` | Exit gromak (restores all windows) |
 
 ## Configuration
 
-The config lives at `%USERPROFILE%\.config\tessera\tessera.toml` and is created
+The config lives at `%USERPROFILE%\.config\gromak\gromak.toml` and is created
 with commented defaults on first launch. Edit it, then press `mod+Shift+R` to
-reload. If the file has an error, tessera says so in the bar and keeps the
+reload. If the file has an error, gromak says so in the bar and keeps the
 previous config.
 
 ```toml
@@ -170,7 +170,7 @@ float = true
 
 The full reference, including every dispatcher, is in
 [`config/default.toml`](config/default.toml). You can also print it with
-`tessera --default-config`.
+`gromak --default-config`.
 
 ### App launcher
 
@@ -189,7 +189,7 @@ finds Terminal, and the matched letters are highlighted.
 
 The list is the same as Start's "All apps" (`shell:AppsFolder`), including
 Microsoft Store apps. Apps you launch often move to the top. The launch
-counts are kept in `%LOCALAPPDATA%\tessera\launcher_history.txt`.
+counts are kept in `%LOCALAPPDATA%\gromak\launcher_history.txt`.
 
 #### Power and session
 
@@ -244,14 +244,14 @@ to switch between them, and set the default with `[launcher] gif_style =
 The GIF goes on the clipboard as a file, the same way Explorer copies one,
 so it stays animated when pasted into Discord, Slack, a browser upload field
 or a folder. The catalog, thumbnails and GIFs are cached in
-`%LOCALAPPDATA%\tessera\orc\`. Each file is downloaded once, and the catalog
+`%LOCALAPPDATA%\gromak\orc\`. Each file is downloaded once, and the catalog
 is refreshed every six hours. GIFs are made by
-[OrcDev](https://orcdev.com) and fetched from the public site; tessera does
+[OrcDev](https://orcdev.com) and fetched from the public site; gromak does
 not bundle any of them.
 
 ### Theme
 
-By default, tessera picks its colours from your wallpaper. It finds the most
+By default, gromak picks its colours from your wallpaper. It finds the most
 vivid colour in the image and uses it as the accent (the active workspace
 pill, the clock dot and the focused window's border). It then tints the bar
 with the image's overall tone. When you change the wallpaper, or a slideshow
@@ -266,9 +266,9 @@ fall back to your Windows accent colour.
 ### Hiding the Windows taskbar
 
 Set `hide_taskbar = true` under `[general]` to hide the Windows taskbar while
-tessera runs (for example if you use another taskbar or launcher). Windows are
-then tiled over the full screen, and the taskbar comes back when tessera exits.
-If Explorer re-shows it, tessera hides it again.
+gromak runs (for example if you use another taskbar or launcher). Windows are
+then tiled over the full screen, and the taskbar comes back when gromak exits.
+If Explorer re-shows it, gromak hides it again.
 
 ### Window rules
 
@@ -279,7 +279,7 @@ Matching ignores case, and `title` matches a substring. A matching rule can:
 - `ignore = true`: leave the window completely alone.
 - `workspace = N`: open the window on workspace N.
 
-Run `tessera --list-windows` to see the exe, class, and title of every window
+Run `gromak --list-windows` to see the exe, class, and title of every window
 you could write a rule for.
 
 ### Dispatchers
@@ -305,22 +305,22 @@ you could write a rule for.
 ## Command line
 
 ```
-tessera                  start the window manager
-tessera --list-windows   print exe, class and title of tileable windows
-tessera --check-config   validate the config file
-tessera --config-path    print where the config file lives
-tessera --default-config print the default config
-tessera --restore        show windows a crashed session left hidden
-tessera --version
-tessera --help
+gromak                  start the window manager
+gromak --list-windows   print exe, class and title of tileable windows
+gromak --check-config   validate the config file
+gromak --config-path    print where the config file lives
+gromak --default-config print the default config
+gromak --restore        show windows a crashed session left hidden
+gromak --version
+gromak --help
 ```
 
-The log is written to `%LOCALAPPDATA%\tessera\tessera.log`. When you start
-tessera from a terminal, the log also streams there.
+The log is written to `%LOCALAPPDATA%\gromak\gromak.log`. When you start
+gromak from a terminal, the log also streams there.
 
 ## Compatibility with other apps
 
-tessera only intercepts the exact key combinations in your `[binds]`, plus
+gromak only intercepts the exact key combinations in your `[binds]`, plus
 the mouse wheel while a bound modifier is held. Every other shortcut reaches
 your apps unchanged. With `mod = "win"`, that includes Ctrl/Alt/Shift
 shortcuts, Ctrl+scroll zoom and Shift+scroll. Windows' own Win shortcuts keep
@@ -331,12 +331,12 @@ clipboard history or Win+N for notifications, remove or rebind that line in
 ## Known limitations
 
 - **Elevated windows.** Windows running as administrator (Task Manager,
-  installers) can only be managed if tessera itself runs as administrator.
+  installers) can only be managed if gromak itself runs as administrator.
   Otherwise they are left untouched.
-- **Alt shortcuts.** With `mod = "alt"`, tessera's bindings take precedence
+- **Alt shortcuts.** With `mod = "alt"`, gromak's bindings take precedence
   over apps' Alt shortcuts. Use `win` or `ctrl+alt` if that bothers you.
 - **Win key.** Win+L always locks Windows and cannot be rebound. While an
-  elevated window has focus, Win-key bindings only work if tessera also runs as
+  elevated window has focus, Win-key bindings only work if gromak also runs as
   administrator.
 - **No animations yet.** Windows move instantly.
 - **Hidden workspaces hide taskbar buttons.** Windows on workspaces that aren't
@@ -348,13 +348,13 @@ clipboard history or Win+N for notifications, remove or rebind that line in
 - Smooth workspace and window animations
 - Per-workspace layouts (master/stack, monocle)
 - Named and persistent workspaces, scratchpad
-- IPC and a `tessera msg` command for scripting
+- IPC and a `gromak msg` command for scripting
 - Bar modules (battery, volume, network, media)
 
 ## Building and contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) to get started and
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how tessera works inside.
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how gromak works inside.
 
 ## License
 
