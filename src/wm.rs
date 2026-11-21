@@ -827,6 +827,7 @@ impl Wm {
             font_px: self.cfg.bar.font_size as f32 * self.monitors[mi].info.scale,
             scale: self.monitors[mi].info.scale,
             emoji_font: self.cfg.launcher.emoji_font_source(),
+            gif_style: self.cfg.launcher.gif_style,
         };
         launcher::toggle(self.base_rect(mi), style);
     }

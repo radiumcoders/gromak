@@ -22,7 +22,7 @@
 //! on Escape or as soon as it loses focus.
 
 use crate::calc;
-use crate::config::FontSource;
+use crate::config::{FontSource, GifStyle};
 use crate::emoji::{self, Emoji};
 use crate::fuzzy;
 use crate::gfx::{hbitmap_bitmap, label, rgba, rounded, Factories, Surface};
@@ -101,6 +101,8 @@ pub struct Style {
     pub font_px: f32,
     pub scale: f32,
     pub emoji_font: FontSource,
+    /// The configured default orc.pictures style.
+    pub gif_style: GifStyle,
 }
 
 /// Device-dependent resources.
@@ -142,6 +144,10 @@ struct Launcher {
     gifs: Vec<orc::Gif>,
     /// The query starts with "gif ": results are GIFs (taller rows).
     gif_mode: bool,
+    /// orc.pictures style in use (Ctrl+S toggles it while the picker is open).
+    gif_style: GifStyle,
+    /// The configured style `gif_style` was last reset from.
+    gif_style_config: GifStyle,
     history: HashMap<String, u32>,
     query: String,
     pending_surrogate: Option<u16>,
@@ -179,7 +185,7 @@ enum Action {
     /// Type text into the previously focused window (via the clipboard).
     Type(String),
     /// Download a GIF and paste it (as a file) into the previous window.
-    PasteGif(orc::Gif),
+    PasteGif(orc::Gif, GifStyle),
 }
 
 // ----- app index ------------------------------------------------------------
@@ -350,6 +356,8 @@ pub fn init() {
             apps: Vec::new(),
             gifs: Vec::new(),
             gif_mode: false,
+            gif_style: GifStyle::Orc,
+            gif_style_config: GifStyle::Orc,
             history: load_history(),
             query: String::new(),
             pending_surrogate: None,
@@ -378,6 +386,11 @@ pub fn toggle(area: Rect, style: Style) {
     let hwnd = with_state(|l| {
         if l.style.as_ref() != Some(&style) {
             l.gfx = None;
+        }
+        // Keep a style switched with Ctrl+S, unless the config default changed.
+        if style.gif_style != l.gif_style_config {
+            l.gif_style = style.gif_style;
+            l.gif_style_config = style.gif_style;
         }
         l.style = Some(style);
         l.area = area;
@@ -456,9 +469,9 @@ fn run(action: Action) {
                 info!("launcher: copied {text}");
             }
         }
-        Action::PasteGif(gif) => {
+        Action::PasteGif(gif, style) => {
             close(true);
-            std::thread::spawn(move || match orc::fetch_gif(&gif) {
+            std::thread::spawn(move || match orc::fetch_gif(&gif, style) {
                 Ok(path) => {
                     if win::set_clipboard_files(&[path]) {
                         std::thread::sleep(Duration::from_millis(80));
@@ -573,7 +586,7 @@ impl Launcher {
             Some(Row::Run(cmd)) => Action::Launch { app: None, command: Some(cmd.clone()) },
             Some(Row::Calc(value)) => Action::Copy(value.clone()),
             Some(Row::Emoji(e, _)) => Action::Type(e.glyph.to_string()),
-            Some(Row::Gif(i, _)) => Action::PasteGif(self.gifs[*i].clone()),
+            Some(Row::Gif(i, _)) => Action::PasteGif(self.gifs[*i].clone(), self.gif_style),
             _ => Action::Nothing,
         }
     }
@@ -634,7 +647,7 @@ impl Launcher {
             VK_RETURN => {
                 // Shift+Enter on a GIF copies its link instead of pasting it.
                 if let (true, Some(Row::Gif(i, _))) = (shift, self.rows.get(self.selected)) {
-                    return Action::Copy(orc::gif_url(&self.gifs[*i]));
+                    return Action::Copy(orc::gif_url(&self.gifs[*i], self.gif_style));
                 }
                 return self.activate(self.selected);
             }
@@ -649,6 +662,10 @@ impl Launcher {
             }
             VK_NEXT => MAX_ROWS as isize,
             VK_PRIOR => -(MAX_ROWS as isize),
+            v if ctrl && v == b'S' as u16 && self.gif_mode => {
+                self.gif_style = self.gif_style.toggled();
+                return Action::Render;
+            }
             v if ctrl && (v == b'J' as u16 || v == b'N' as u16) => 1,
             v if ctrl && (v == b'K' as u16 || v == b'P' as u16) => -1,
             _ => return Action::Nothing,
@@ -946,7 +963,22 @@ impl Launcher {
             None,
         );
         let text_x = m + pad + 46.0 * s;
-        let text_w = w - (text_x - m) - pad - 16.0 * s;
+        let mut text_w = w - (text_x - m) - pad - 16.0 * s;
+        // GIF mode: show which orc.pictures style is active.
+        if self.gif_mode {
+            let text = format!("{}  ·  Ctrl+S", if self.gif_style == GifStyle::Videorc { "Videorc" } else { "Orc" });
+            if let Some(style_label) = label(f, &gfx.hint, &text, text_w / 2.0, search_h) {
+                let x = m + w - pad - 16.0 * s - style_label.width;
+                brush.SetColor(&rgba(p.accent, 0.9));
+                target.DrawTextLayout(
+                    Vector2 { X: x, Y: m + pad },
+                    &style_label.layout,
+                    brush,
+                    D2D1_DRAW_TEXT_OPTIONS_NONE,
+                );
+                text_w -= style_label.width + 16.0 * s;
+            }
+        }
         let mut caret_x = text_x;
         let query_origin = Vector2 { X: text_x, Y: m + pad };
         if self.query.is_empty() {
@@ -1093,14 +1125,15 @@ impl Launcher {
                     let gif = &self.gifs[*i];
                     let thumb = (row_h - 12.0 * s).round();
                     let ty = y0 + (row_h - thumb) / 2.0;
-                    let key = format!("orc:{}:{}", gif.slug, gif.revision);
+                    let style = self.gif_style;
+                    let key = format!("orc:{}:{}:{}", style.name(), gif.slug, gif.asset(style).revision);
                     if !gfx.icons.contains_key(&key) {
-                        let poster = orc::poster_path(gif);
+                        let poster = orc::poster_path(gif, style);
                         if poster.exists() {
                             let bitmap = crate::gfx::file_bitmap(f, &gfx.target, &poster);
                             gfx.icons.insert(key.clone(), bitmap);
                         } else {
-                            orc::ensure_poster(gif, notify_launcher);
+                            orc::ensure_poster(gif, style, notify_launcher);
                         }
                     }
                     match gfx.icons.get(&key) {

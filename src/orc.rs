@@ -8,6 +8,7 @@
 //! picker, a GIF is put on the clipboard as a *file*, so it stays animated
 //! when pasted into Discord, Slack, a browser upload field, and so on.
 
+use crate::config::GifStyle;
 use crate::fuzzy;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -33,6 +34,38 @@ pub struct Gif {
     /// Content hash, changes when the GIF is redone.
     #[serde(default)]
     pub revision: String,
+    /// The Videorc version of the same GIF, if there is one.
+    #[serde(default)]
+    pub videorc: Option<Asset>,
+}
+
+/// One rendition of a GIF: its file, poster and revision.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Asset {
+    pub file: String,
+    pub poster: String,
+    #[serde(default)]
+    pub revision: String,
+}
+
+impl Gif {
+    /// The rendition for `style`, falling back to the orc one when the GIF
+    /// has no Videorc version.
+    pub fn asset(&self, style: GifStyle) -> Asset {
+        match (style, &self.videorc) {
+            (GifStyle::Videorc, Some(v)) => v.clone(),
+            _ => Asset { file: self.file.clone(), poster: self.poster.clone(), revision: self.revision.clone() },
+        }
+    }
+
+    /// The style actually used for `style` (after the fallback).
+    fn effective(&self, style: GifStyle) -> GifStyle {
+        if self.videorc.is_some() {
+            style
+        } else {
+            GifStyle::Orc
+        }
+    }
 }
 
 static CATALOG: Mutex<Vec<Gif>> = Mutex::new(Vec::new());
@@ -62,13 +95,20 @@ fn valid_asset(path: &str, ext: &str) -> bool {
 /// Parses `catalog.json`, dropping entries with unexpected slugs or paths.
 pub fn parse_catalog(json: &str) -> Result<Vec<Gif>, String> {
     let gifs: Vec<Gif> = serde_json::from_str(json).map_err(|e| e.to_string())?;
+    let valid =
+        |a: &Asset| valid_revision(&a.revision) && valid_asset(&a.file, ".gif") && valid_asset(&a.poster, ".jpg");
     Ok(gifs
         .into_iter()
         .filter(|g| {
             valid_slug(&g.slug)
-                && valid_revision(&g.revision)
-                && valid_asset(&g.file, ".gif")
-                && valid_asset(&g.poster, ".jpg")
+                && valid(&Asset { file: g.file.clone(), poster: g.poster.clone(), revision: g.revision.clone() })
+        })
+        .map(|mut g| {
+            // A bad Videorc rendition only loses that rendition.
+            if g.videorc.as_ref().is_some_and(|v| !valid(v)) {
+                g.videorc = None;
+            }
+            g
         })
         .collect())
 }
@@ -81,31 +121,39 @@ fn catalog_path() -> PathBuf {
     cache_dir().join("catalog.json")
 }
 
-fn revision_dir(gif: &Gif) -> &str {
-    if gif.revision.is_empty() {
+fn revision_dir(asset: &Asset) -> &str {
+    if asset.revision.is_empty() {
         "current"
     } else {
-        &gif.revision
+        &asset.revision
     }
 }
 
-fn versioned(gif: &Gif, kind: &str, ext: &str) -> PathBuf {
-    cache_dir().join(kind).join(format!("{}.{}.{ext}", gif.slug, revision_dir(gif)))
+/// `posters/<style>/<slug>.<revision>.jpg`
+pub fn poster_path(gif: &Gif, style: GifStyle) -> PathBuf {
+    let asset = gif.asset(style);
+    cache_dir().join("posters").join(gif.effective(style).name()).join(format!(
+        "{}.{}.jpg",
+        gif.slug,
+        revision_dir(&asset)
+    ))
 }
 
-pub fn poster_path(gif: &Gif) -> PathBuf {
-    versioned(gif, "posters", "jpg")
+/// `gifs/<style>/<revision>/<slug>.gif`: the file keeps a clean name
+/// (`angry.gif`) when pasted, while styles and revisions still get separate
+/// cache entries.
+fn gif_path(gif: &Gif, style: GifStyle) -> PathBuf {
+    let asset = gif.asset(style);
+    cache_dir()
+        .join("gifs")
+        .join(gif.effective(style).name())
+        .join(revision_dir(&asset))
+        .join(format!("{}.gif", gif.slug))
 }
 
-/// `gifs/<revision>/<slug>.gif`: the file keeps a clean name (`angry.gif`)
-/// when pasted, while revisions still get separate cache entries.
-fn gif_path(gif: &Gif) -> PathBuf {
-    cache_dir().join("gifs").join(revision_dir(gif)).join(format!("{}.gif", gif.slug))
-}
-
-/// The public URL of a GIF.
-pub fn gif_url(gif: &Gif) -> String {
-    format!("{ORIGIN}{}", gif.file)
+/// The public URL of a GIF in `style`.
+pub fn gif_url(gif: &Gif, style: GifStyle) -> String {
+    format!("{ORIGIN}{}", gif.asset(style).file)
 }
 
 fn asset_url(path: &str, revision: &str) -> String {
@@ -193,37 +241,42 @@ pub fn refresh_catalog(done: impl Fn() + Send + 'static) {
 
 /// Downloads a GIF's poster in the background if it is not cached yet;
 /// `done` runs when it arrives.
-pub fn ensure_poster(gif: &Gif, done: impl Fn() + Send + 'static) {
-    let dest = poster_path(gif);
+pub fn ensure_poster(gif: &Gif, style: GifStyle, done: impl Fn() + Send + 'static) {
+    let dest = poster_path(gif, style);
     if dest.exists() {
         return;
     }
+    let key = format!("{}:{}", gif.effective(style).name(), gif.slug);
     {
         let mut in_flight = POSTERS_IN_FLIGHT.lock().unwrap_or_else(|e| e.into_inner());
-        if in_flight.contains(&gif.slug) {
+        if in_flight.contains(&key) {
             return;
         }
-        in_flight.push(gif.slug.clone());
+        in_flight.push(key.clone());
     }
-    let (url, slug) = (asset_url(&gif.poster, &gif.revision), gif.slug.clone());
+    let asset = gif.asset(style);
+    let url = asset_url(&asset.poster, &asset.revision);
     std::thread::spawn(move || {
         match download(&url, &dest, &[b"\xFF\xD8\xFF"]) {
             Ok(()) => done(),
             Err(e) => warn!("orc.pictures: {e}"),
         }
-        POSTERS_IN_FLIGHT.lock().unwrap_or_else(|e| e.into_inner()).retain(|s| *s != slug);
+        POSTERS_IN_FLIGHT.lock().unwrap_or_else(|e| e.into_inner()).retain(|k| *k != key);
     });
 }
 
-/// Returns the cached GIF file, downloading it first if needed (blocking).
-pub fn fetch_gif(gif: &Gif) -> Result<PathBuf, String> {
-    let dest = gif_path(gif);
+/// Returns the cached GIF file in `style`, downloading it first if needed
+/// (blocking).
+pub fn fetch_gif(gif: &Gif, style: GifStyle) -> Result<PathBuf, String> {
+    let dest = gif_path(gif, style);
     if !dest.exists() {
-        download(&asset_url(&gif.file, &gif.revision), &dest, &[b"GIF87a", b"GIF89a"])?;
+        let asset = gif.asset(style);
+        download(&asset_url(&asset.file, &asset.revision), &dest, &[b"GIF87a", b"GIF89a"])?;
         // Older revisions of the same GIF are dead weight now.
         let file_name = format!("{}.gif", gif.slug);
-        for entry in std::fs::read_dir(cache_dir().join("gifs")).into_iter().flatten().flatten() {
-            if entry.file_name() != revision_dir(gif) {
+        let style_dir = cache_dir().join("gifs").join(gif.effective(style).name());
+        for entry in std::fs::read_dir(style_dir).into_iter().flatten().flatten() {
+            if entry.file_name() != revision_dir(&asset) {
                 let _ = std::fs::remove_file(entry.path().join(&file_name));
             }
         }
@@ -265,8 +318,10 @@ mod tests {
     use super::*;
 
     const SAMPLE: &str = r#"[
-        {"file":"/gifs/angry.gif","poster":"/gifs/angry.jpg","slug":"angry","tags":["angry","mad","rage"],"title":"Angry","revision":"e83cea76e831","width":544,"height":544},
-        {"file":"/gifs/burn-it-with-fire.gif","poster":"/gifs/burn-it-with-fire.jpg","slug":"burn-it-with-fire","tags":["fire","burn"],"title":"Burn It With Fire","revision":"0a1b2c3d4e5f"},
+        {"file":"/gifs/angry.gif","poster":"/gifs/angry.jpg","slug":"angry","tags":["angry","mad","rage"],"title":"Angry","revision":"e83cea76e831","width":544,"height":544,
+         "videorc":{"file":"/gifs/videorc/angry.gif","poster":"/gifs/videorc/angry.jpg","revision":"e9e990775e87","width":640,"height":640}},
+        {"file":"/gifs/burn-it-with-fire.gif","poster":"/gifs/burn-it-with-fire.jpg","slug":"burn-it-with-fire","tags":["fire","burn"],"title":"Burn It With Fire","revision":"0a1b2c3d4e5f",
+         "videorc":{"file":"/gifs/../oops.gif","poster":"/gifs/videorc/x.jpg"}},
         {"file":"/gifs/../../evil.gif","poster":"/gifs/evil.jpg","slug":"evil","tags":[],"title":"Evil"},
         {"file":"/gifs/x.gif","poster":"/gifs/x.jpg","slug":"Bad Slug","tags":[],"title":"Bad"},
         {"file":"/gifs/y.gif","poster":"/gifs/y.jpg","slug":"y","tags":[],"title":"Y","revision":"not-hex!"}
@@ -306,9 +361,23 @@ mod tests {
     #[test]
     fn builds_urls_and_cache_paths() {
         let gif = parse_catalog(SAMPLE).unwrap().remove(0);
-        assert_eq!(gif_url(&gif), "https://orc.pictures/gifs/angry.gif");
+        assert_eq!(gif_url(&gif, GifStyle::Orc), "https://orc.pictures/gifs/angry.gif");
         assert_eq!(asset_url(&gif.file, &gif.revision), "https://orc.pictures/gifs/angry.gif?v=e83cea76e831");
-        assert!(poster_path(&gif).ends_with(r"orc\posters\angry.e83cea76e831.jpg"));
-        assert!(gif_path(&gif).ends_with(r"orc\gifs\e83cea76e831\angry.gif"));
+        assert!(poster_path(&gif, GifStyle::Orc).ends_with(r"orc\posters\orc\angry.e83cea76e831.jpg"));
+        assert!(gif_path(&gif, GifStyle::Orc).ends_with(r"orc\gifs\orc\e83cea76e831\angry.gif"));
+    }
+
+    #[test]
+    fn supports_both_styles_with_fallback() {
+        let gifs = parse_catalog(SAMPLE).unwrap();
+        let angry = &gifs[0];
+        assert_eq!(gif_url(angry, GifStyle::Videorc), "https://orc.pictures/gifs/videorc/angry.gif");
+        assert!(poster_path(angry, GifStyle::Videorc).ends_with(r"orc\posters\videorc\angry.e9e990775e87.jpg"));
+        assert!(gif_path(angry, GifStyle::Videorc).ends_with(r"orc\gifs\videorc\e9e990775e87\angry.gif"));
+        // An invalid Videorc rendition is dropped; the GIF falls back to orc.
+        let fire = &gifs[1];
+        assert_eq!(fire.videorc, None);
+        assert_eq!(gif_url(fire, GifStyle::Videorc), "https://orc.pictures/gifs/burn-it-with-fire.gif");
+        assert!(gif_path(fire, GifStyle::Videorc).ends_with(r"orc\gifs\orc\0a1b2c3d4e5f\burn-it-with-fire.gif"));
     }
 }

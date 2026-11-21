@@ -120,11 +120,40 @@ pub struct Launcher {
     /// An installed font family, or a path to a `.ttf`/`.otf` file (relative
     /// paths are relative to the config directory).
     pub emoji_font: String,
+    /// Which orc.pictures variant the GIF picker shows first.
+    pub gif_style: GifStyle,
+}
+
+/// orc.pictures offers every GIF in two styles.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GifStyle {
+    /// The original orc GIFs.
+    #[default]
+    Orc,
+    /// The Videorc versions.
+    Videorc,
+}
+
+impl GifStyle {
+    pub fn toggled(self) -> Self {
+        match self {
+            GifStyle::Orc => GifStyle::Videorc,
+            GifStyle::Videorc => GifStyle::Orc,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            GifStyle::Orc => "orc",
+            GifStyle::Videorc => "videorc",
+        }
+    }
 }
 
 impl Default for Launcher {
     fn default() -> Self {
-        Launcher { emoji_font: "Segoe UI Emoji".into() }
+        Launcher { emoji_font: "Segoe UI Emoji".into(), gif_style: GifStyle::Orc }
     }
 }
 
@@ -554,14 +583,14 @@ mod tests {
 
     #[test]
     fn resolves_emoji_font_sources() {
-        let family = Launcher { emoji_font: "Segoe UI Emoji".into() };
+        let family = Launcher { emoji_font: "Segoe UI Emoji".into(), ..Default::default() };
         assert_eq!(family.emoji_font_source(), FontSource::Family("Segoe UI Emoji".into()));
-        let relative = Launcher { emoji_font: "fonts/Twemoji.ttf".into() };
+        let relative = Launcher { emoji_font: "fonts/Twemoji.ttf".into(), ..Default::default() };
         match relative.emoji_font_source() {
             FontSource::File(p) => assert!(p.ends_with("fonts/Twemoji.ttf") && p.is_absolute()),
             other => panic!("{other:?}"),
         }
-        let absolute = Launcher { emoji_font: r"C:\Fonts\Noto.ttf".into() };
+        let absolute = Launcher { emoji_font: r"C:\Fonts\Noto.ttf".into(), ..Default::default() };
         assert_eq!(absolute.emoji_font_source(), FontSource::File(PathBuf::from(r"C:\Fonts\Noto.ttf")));
     }
 

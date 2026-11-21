@@ -220,6 +220,9 @@ Type `gif ` followed by a search, such as `gif angry` or `gif fire`, to
 browse the [orc.pictures](https://orc.pictures) reaction-GIF catalog, with
 thumbnails. **Enter** pastes the GIF into the window you were using.
 **Shift+Enter** copies its link instead.
+Every GIF comes in two styles, orc and Videorc. Press **Ctrl+S** in the picker
+to switch between them, and set the default with `[launcher] gif_style =
+"orc"` or `"videorc"`.
 
 The GIF goes on the clipboard as a file, the same way Explorer copies one,
 so it stays animated when pasted into Discord, Slack, a browser upload field

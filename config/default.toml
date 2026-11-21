@@ -65,6 +65,9 @@ clock_24h = true
 # https://github.com/mozilla/twemoji-colr/releases into a "fonts" folder
 # next to this file and set: emoji_font = "fonts/Twemoji.Mozilla.ttf"
 emoji_font = "Segoe UI Emoji"
+# Default style for the orc.pictures GIF picker (type "gif " in the launcher):
+# "orc" or "videorc". Ctrl+S switches between them while the picker is open.
+gif_style = "orc"
 
 # Window rules. A rule matches on any combination of `exe`, `class` and
 # `title` (case-insensitive; `title` matches a substring), and can make a
