@@ -29,6 +29,10 @@ start_menu = "tap"
 # workspace pill to send it to that workspace); drag with the right button to
 # resize it.
 mouse_drag = true
+# Turn off Windows' own snapping (dragging a window to a screen edge, the Snap
+# Layouts flyout, Snap Assist) while gromak runs, so it cannot resize windows
+# behind the tiler's back. Your previous setting comes back when gromak exits.
+disable_snap = true
 
 [theme]
 # Where colours come from:

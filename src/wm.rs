@@ -188,6 +188,7 @@ impl Wm {
     /// Detects monitors, adopts existing windows and registers hotkeys.
     pub fn start(&mut self) {
         self.apply_taskbar();
+        self.apply_snap();
         self.detect_monitors();
         let foreground = win::foreground();
         // Bottom of the z-order first, so recently used windows split last.
@@ -214,6 +215,7 @@ impl Wm {
     pub fn shutdown(&mut self) {
         self.unregister_hotkeys();
         hidden::restore_all();
+        crate::snap::restore();
         for &h in self.windows.keys() {
             win::set_border_color(h, win::BORDER_DEFAULT);
             win::set_transitions_disabled(h, false);
@@ -308,6 +310,14 @@ impl Wm {
         }
     }
 
+    fn apply_snap(&self) {
+        if self.cfg.general.disable_snap {
+            crate::snap::disable();
+        } else {
+            crate::snap::restore();
+        }
+    }
+
     fn register_hotkeys(&mut self) {
         let (binds, errors) = self.cfg.compile_binds();
         for e in &errors {
@@ -366,6 +376,7 @@ impl Wm {
                 self.cfg = cfg;
                 self.load_colors();
                 self.apply_taskbar();
+                self.apply_snap();
                 self.detect_monitors();
                 self.register_hotkeys();
                 mouse::set_enabled(self.cfg.general.focus_follows_mouse);

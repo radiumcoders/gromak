@@ -103,6 +103,9 @@ pub struct General {
     pub start_menu: StartMenu,
     /// mod+left-drag moves windows, mod+right-drag resizes them.
     pub mouse_drag: bool,
+    /// Turn Windows' own snapping (edge snap, Snap Layouts, Snap Assist) off
+    /// while gromak runs.
+    pub disable_snap: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -268,6 +271,7 @@ impl Default for General {
             focus_follows_mouse: false,
             start_menu: StartMenu::Tap,
             mouse_drag: true,
+            disable_snap: true,
         }
     }
 }

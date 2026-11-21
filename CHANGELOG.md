@@ -62,6 +62,9 @@ All notable changes to this project are documented here. The format follows
 - `general.start_menu`: make a lone Win tap do nothing (`double_tap` opens
   Start on a quick double tap, `never` never does).
 - Thinner bar and tighter gaps by default.
+- `general.disable_snap` (on by default): Windows' own snapping (edge snap,
+  Snap Layouts, Snap Assist) is turned off while gromak runs and restored
+  when it exits, logs off, or the next start after a crash.
 
 ### Fixed
 

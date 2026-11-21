@@ -17,7 +17,7 @@ window, and nothing else.
 
 > **Status:** early (v0.1). It is usable day to day, but expect rough edges.
 > If gromak ever exits unexpectedly, run `gromak --restore` to bring back
-> windows that were on hidden workspaces.
+> windows that were on hidden workspaces and turn Windows Snap back on.
 
 ## Features
 
@@ -145,6 +145,7 @@ hide_taskbar = false
 focus_follows_mouse = false
 start_menu = "tap"       # or "double_tap" / "never" (also blocks Ctrl+Esc)
 mouse_drag = true
+disable_snap = true      # turn off Windows Snap while gromak runs
 
 [theme]
 source = "wallpaper"  # or "accent" or "manual"
@@ -294,6 +295,17 @@ Set `hide_taskbar = true` under `[general]` to hide the Windows taskbar while
 gromak runs (for example if you use another taskbar or launcher). Windows are
 then tiled over the full screen, and the taskbar comes back when gromak exits.
 If Explorer re-shows it, gromak hides it again.
+
+### Windows Snap
+
+While gromak runs, Windows' own snapping is turned off: dragging a window to
+a screen edge, the Snap Layouts flyout (top of the screen and the maximize
+button), and Snap Assist. Otherwise Windows would resize windows behind the
+tiler's back. This is the "Snap windows" switch in Settings → System →
+Multitasking. Your previous setting comes back when gromak exits or you log
+off. If gromak ever crashes, it is restored the next time gromak starts, or
+by `gromak --restore`. Set `disable_snap = false` under `[general]` to leave
+Snap alone.
 
 ### Window rules
 

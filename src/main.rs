@@ -19,6 +19,7 @@ mod mouse;
 mod orc;
 mod popup;
 mod power;
+mod snap;
 mod theme;
 mod win;
 mod wm;
@@ -88,8 +89,9 @@ USAGE:
     gromak --check-config   validate the config file
     gromak --config-path    print where the config file lives
     gromak --default-config print the default config
-    gromak --restore        show windows a crashed session left hidden
-                             (refuses while gromak runs; add --force)
+    gromak --restore        undo what a crashed session left behind
+                            (hidden windows, Windows Snap turned off);
+                            refuses while gromak runs (add --force)
     gromak --version        print the version
     gromak --help           print this help
 ";
@@ -194,7 +196,8 @@ fn run_cli(args: &[String]) -> i32 {
                 eprintln!("gromak is running; exit it first (or pass --restore --force)");
                 return 1;
             }
-            println!("restored {} window(s)", wm::recover_hidden())
+            println!("restored {} window(s)", wm::recover_hidden());
+            snap::restore();
         }
         other => {
             eprintln!("unknown argument: {other}\n\n{USAGE}");
@@ -248,8 +251,10 @@ unsafe extern "system" fn ctrl_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
             0
         }
         WM_ENDSESSION if wp != 0 => {
-            // Logging off or shutting down: make sure no window stays hidden.
+            // Logging off or shutting down: make sure no window stays hidden
+            // and Windows Snap is back the way it was.
             wm::restore_hidden();
+            snap::restore();
             0
         }
         // These are normally taken off the queue by the main loop without
