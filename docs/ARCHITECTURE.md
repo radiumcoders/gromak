@@ -24,6 +24,7 @@ ordinary `SetWindowPos` / `ShowWindow` calls.
 | `src/config.rs` | TOML schema, defaults, validation, and parsing of hotkeys and dispatcher commands. No Win32, fully unit-tested. |
 | `src/bar.rs` | The per-monitor floating bar: a layered window drawn with Direct2D and DirectWrite. |
 | `src/keyboard.rs` | The low-level keyboard hook thread for Win-key bindings. |
+| `src/theme.rs` | Derives colour palettes from the wallpaper or accent colour, and detects changes. |
 | `src/win.rs` | Thin wrappers over the Win32 / DWM APIs, plus the "is this a normal app window?" heuristic. |
 | `src/log.rs` | File and stderr logger. |
 
@@ -120,6 +121,24 @@ When a binding includes Alt or Win, tessera sends an unassigned virtual key
 (`0xE8`) right after it fires. Otherwise, releasing the modifier would look
 like a lone Alt or Win press to the focused app, which then opens its menu bar
 or the Start menu.
+
+## Theming
+
+`src/theme.rs` turns the wallpaper into a palette. WIC decodes the image and
+downsamples it to about 96 px. If the configured file can't be read, tessera
+uses Windows' `TranscodedWallpaper` copy, then the solid desktop colour.
+Pixels are binned by hue and weighted by chroma squared, so vivid colours
+dominate and grey, near-black and near-white pixels are ignored. The
+heaviest window of three adjacent bins becomes the accent hue. The image's
+average colour gives a gentle tint for the neutrals. The palette is built in
+HSL with fixed lightness levels, so contrast stays readable whatever the
+wallpaper, in either dark or light mode.
+
+The inputs (wallpaper path and modification time, the transcoded copy, light
+mode, accent colour and desktop colour) are fingerprinted. The control window
+re-checks that fingerprint when Windows broadcasts `SPI_SETDESKWALLPAPER` or
+`ImmersiveColorSet`, and every 5 seconds as a fallback. Colours are only
+recomputed when the fingerprint changes.
 
 ## The bar
 

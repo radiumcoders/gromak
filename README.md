@@ -37,6 +37,10 @@ floating bar per monitor, a coloured border on the focused window, and nothing e
 - **Floating island bar.** Translucent, rounded islands for workspaces, the
   focused window's icon and title, and the date and time. The space between
   them is see-through and click-through.
+- **Themed by your wallpaper.** The bar and the focused window's border take
+  their colours from your desktop wallpaper and follow it when it changes,
+  in dark or light mode. You can also use your Windows accent colour, or
+  your own colours.
 - **Focus borders.** Uses Windows 11's native DWM window borders.
 - **Window rules.** Float, ignore, or pin windows to workspaces by exe, class, or title.
 - **Multi-monitor and per-monitor DPI aware.** Gaps and the bar scale with each display.
@@ -108,6 +112,10 @@ mod = "alt"
 terminal = "wt.exe"
 hide_taskbar = false
 
+[theme]
+source = "wallpaper"  # or "accent" or "manual"
+mode = "auto"          # follow Windows light/dark, or "dark" / "light"
+
 [decoration]
 borders = true
 active_border = "#8aadf4"
@@ -142,6 +150,20 @@ float = true
 The full reference, including every dispatcher, is in
 [`config/default.toml`](config/default.toml). You can also print it with
 `tessera --default-config`.
+
+### Theme
+
+By default, tessera picks its colours from your wallpaper. It finds the most
+vivid colour in the image and uses it as the accent (the active workspace
+pill, the clock dot and the focused window's border). It then tints the bar
+with the image's overall tone. When you change the wallpaper, or a slideshow
+moves on, the colours update within a few seconds. Black-and-white wallpapers
+fall back to your Windows accent colour.
+
+| `[theme]` option | Values |
+| --- | --- |
+| `source` | `"wallpaper"` (default), `"accent"` (the Windows accent colour), or `"manual"` (the colours in `[bar]` and `[decoration]`) |
+| `mode` | `"auto"` (follow Windows' light/dark setting, the default), `"dark"`, or `"light"` |
 
 ### Hiding the Windows taskbar
 

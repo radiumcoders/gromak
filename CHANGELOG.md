@@ -24,6 +24,9 @@ All notable changes to this project are documented here. The format follows
 - `mod = "win"` support: Win-key bindings go through a low-level keyboard hook,
   so they override Windows' reserved shortcuts without opening the Start menu.
 - `hide_taskbar` keeps the Windows taskbar hidden, even when Explorer re-shows it.
+- Wallpaper-driven theming: colours are derived from the desktop wallpaper
+  and follow it live, in dark or light mode (`[theme] source` and `mode`).
+  The Windows accent colour or manual colours are also supported.
 - Windows 11 accent border on the focused window.
 - Window rules by exe, class, or title: float, ignore, or assign a workspace.
 - TOML configuration with commented defaults, validation, and live reload.
