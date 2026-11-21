@@ -564,11 +564,12 @@ impl Wm {
             hidden::hide(h);
         }
         info!(
-            "manage {h:#x} {} [{}] \"{}\" -> workspace {}{}",
+            "manage {h:#x} {} [{}] \"{}\" -> workspace {} on monitor {}{}",
             info.exe,
             info.class,
             info.title,
-            ws + 1,
+            ws % WORKSPACES + 1,
+            ws / WORKSPACES + 1,
             if floating { " (floating)" } else { "" }
         );
         true
