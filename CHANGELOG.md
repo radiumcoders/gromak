@@ -46,3 +46,27 @@ All notable changes to this project are documented here. The format follows
   next start, or `tessera --restore`.
 - CLI: `--list-windows`, `--check-config`, `--config-path`,
   `--default-config`, `--restore`, `--version`, and `--help`.
+- Per-monitor workspaces: every monitor has its own workspaces 1–10.
+- `mod`+drag moves windows (drop on a tile, a monitor or a bar workspace
+  pill); `mod`+right-drag resizes floating windows or moves tile splits
+  (`general.mouse_drag`).
+- `mod+ctrl+1…0` sends the focused window to a workspace without following.
+- `general.start_menu`: make a lone Win tap do nothing (`double_tap` opens
+  Start on a quick double tap, `never` never does).
+- Thinner bar and tighter gaps by default.
+
+### Fixed
+
+- Focus could disagree with the real keyboard focus (notably for Store
+  apps); focus follows mouse used a stale pointer position; floating
+  windows could end up behind tiles.
+- Directional focus/move picked windows that did not line up instead of
+  crossing to the next monitor.
+- Windows could stay hidden after a monitor came back, after being moved to
+  a visible workspace, or after being cloaked while hidden.
+- tessera's own fullscreen could get stuck; resize drags were treated as
+  moves; borders were left behind on unmanaged windows.
+- The GIF picker lost its selection while thumbnails loaded, and failed
+  thumbnails were re-downloaded continuously.
+- The fuzzy matcher missed valid matches; the calculator could overflow its
+  stack on huge input; wheel and keyboard hooks could keep stale state.

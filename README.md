@@ -27,13 +27,17 @@ floating bar per monitor, a coloured border on the focused window, and nothing e
 ## Features
 
 - **Dwindle tiling.** Every new window splits the focused tile along its longer side.
-- **Ten workspaces.** Switch with `mod+1…0`, send windows with `mod+shift+1…0`.
-  Each monitor shows its own workspace.
+- **Ten workspaces per monitor.** Every monitor has its own workspaces 1–10.
+  `mod+1…0` switches on the monitor under the pointer, `mod+shift+1…0` moves
+  the focused window there and follows it, and `mod+ctrl+1…0` sends it
+  without following.
 - **Keyboard-first.** Move focus, swap, resize, float, fullscreen, and close
   windows without touching the mouse. The commands use Hyprland's names
   (`movefocus`, `togglefloating`, `workspace e+1`…).
-- **Mouse-friendly too.** Drag a tiled window onto another to swap them, or onto
-  another monitor to move it. Click or scroll the bar to change workspace.
+- **Mouse-friendly too.** Hold `mod` and drag any window: drop it on another
+  tile to swap, on another monitor to move it, or on a bar workspace pill to
+  send it to that workspace. `mod`+right-drag resizes. You can also drag by
+  the title bar, click or scroll the bar, and use `mod`+scroll.
 - **Focus follows mouse (optional).** Focus moves to whatever window the pointer
   is over, and the pointer follows when you move focus with the keyboard, like
   Hyprland's `follow_mouse`. Turn it on with `focus_follows_mouse = true`.
@@ -100,6 +104,8 @@ moving focus right.
 | `mod+Ctrl+1` … `mod+Ctrl+0` | Send window to workspace 1–10 without following it |
 | `mod+.` / `mod+,` | Next / previous workspace |
 | `mod+N` / `mod+Shift+N` | Focus next / previous window |
+| `mod`+drag | Move a window (drop on a tile, a monitor or a bar workspace pill) |
+| `mod`+right-drag | Resize a floating window, or move a tile's split |
 | `mod`+scroll | Focus next / previous window |
 | `mod+Shift`+scroll | Next / previous workspace |
 | `mod+V` | Toggle floating |
@@ -124,6 +130,8 @@ mod = "alt"
 terminal = "wt.exe"
 hide_taskbar = false
 focus_follows_mouse = false
+start_menu = "tap"       # or "double_tap" / "never": what a lone Win tap does
+mouse_drag = true
 
 [theme]
 source = "wallpaper"  # or "accent" or "manual"

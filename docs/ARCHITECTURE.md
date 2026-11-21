@@ -52,8 +52,15 @@ cross-process calls. To keep `Wm` free of re-entrancy:
 
 ## Workspaces and hiding
 
-There are ten global workspaces. Each monitor shows exactly one. Windows on a
-workspace that no monitor shows are hidden with `SW_HIDE`. tessera prefers this
+Every monitor owns ten workspaces (`workspaces[monitor * 10 + n]`), and each
+monitor shows exactly one of its own. Workspace keys resolve against the
+active monitor: the one under the pointer when focus follows mouse is on,
+otherwise the one with focus. When monitors are added or removed, workspaces
+follow their monitor (matched by handle, then by position). The workspaces
+of a vanished monitor merge into the same-numbered workspaces of the first
+monitor. A visibility sync then shows the windows of every shown workspace.
+
+Windows on a workspace that no monitor shows are hidden with `SW_HIDE`. tessera prefers this
 over cloaking or minimizing because it is reliable across apps and keeps those
 windows out of Alt+Tab.
 
