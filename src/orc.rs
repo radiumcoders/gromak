@@ -11,7 +11,7 @@
 use crate::fuzzy;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
@@ -38,6 +38,8 @@ pub struct Gif {
 static CATALOG: Mutex<Vec<Gif>> = Mutex::new(Vec::new());
 static FETCHING: AtomicBool = AtomicBool::new(false);
 static POSTERS_IN_FLIGHT: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// Makes temporary download names unique across concurrent downloads.
+static DOWNLOAD_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// `^[a-z0-9]+(-[a-z0-9]+)*$`, at most 80 characters: slugs end up in file
 /// names, so anything else is rejected.
@@ -79,17 +81,26 @@ fn catalog_path() -> PathBuf {
     cache_dir().join("catalog.json")
 }
 
+fn revision_dir(gif: &Gif) -> &str {
+    if gif.revision.is_empty() {
+        "current"
+    } else {
+        &gif.revision
+    }
+}
+
 fn versioned(gif: &Gif, kind: &str, ext: &str) -> PathBuf {
-    let rev = if gif.revision.is_empty() { "current" } else { &gif.revision };
-    cache_dir().join(kind).join(format!("{}.{rev}.{ext}", gif.slug))
+    cache_dir().join(kind).join(format!("{}.{}.{ext}", gif.slug, revision_dir(gif)))
 }
 
 pub fn poster_path(gif: &Gif) -> PathBuf {
     versioned(gif, "posters", "jpg")
 }
 
+/// `gifs/<revision>/<slug>.gif`: the file keeps a clean name (`angry.gif`)
+/// when pasted, while revisions still get separate cache entries.
 fn gif_path(gif: &Gif) -> PathBuf {
-    versioned(gif, "gifs", "gif")
+    cache_dir().join("gifs").join(revision_dir(gif)).join(format!("{}.gif", gif.slug))
 }
 
 /// The public URL of a GIF.
@@ -111,7 +122,8 @@ fn download(url: &str, dest: &Path, magic: &[&[u8]]) -> Result<(), String> {
     use windows_sys::Win32::System::Com::Urlmon::URLDownloadToFileW;
     let dir = dest.parent().ok_or("bad destination")?;
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    let tmp = dir.join(format!(".download-{}.tmp", std::process::id()));
+    let n = DOWNLOAD_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let tmp = dir.join(format!(".download-{}-{n}.tmp", std::process::id()));
     let (wurl, wtmp) = (crate::win::wide(url), crate::win::wide(&tmp.to_string_lossy()));
     let hr = unsafe { URLDownloadToFileW(std::ptr::null_mut(), wurl.as_ptr(), wtmp.as_ptr(), 0, std::ptr::null_mut()) };
     if hr != 0 {
@@ -209,13 +221,10 @@ pub fn fetch_gif(gif: &Gif) -> Result<PathBuf, String> {
     if !dest.exists() {
         download(&asset_url(&gif.file, &gif.revision), &dest, &[b"GIF87a", b"GIF89a"])?;
         // Older revisions of the same GIF are dead weight now.
-        if let (Some(dir), Some(name)) = (dest.parent(), dest.file_name()) {
-            let prefix = format!("{}.", gif.slug);
-            for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
-                let other = entry.file_name();
-                if other != name && other.to_string_lossy().starts_with(&prefix) {
-                    let _ = std::fs::remove_file(entry.path());
-                }
+        let file_name = format!("{}.gif", gif.slug);
+        for entry in std::fs::read_dir(cache_dir().join("gifs")).into_iter().flatten().flatten() {
+            if entry.file_name() != revision_dir(gif) {
+                let _ = std::fs::remove_file(entry.path().join(&file_name));
             }
         }
     }
@@ -300,5 +309,6 @@ mod tests {
         assert_eq!(gif_url(&gif), "https://orc.pictures/gifs/angry.gif");
         assert_eq!(asset_url(&gif.file, &gif.revision), "https://orc.pictures/gifs/angry.gif?v=e83cea76e831");
         assert!(poster_path(&gif).ends_with(r"orc\posters\angry.e83cea76e831.jpg"));
+        assert!(gif_path(&gif).ends_with(r"orc\gifs\e83cea76e831\angry.gif"));
     }
 }
