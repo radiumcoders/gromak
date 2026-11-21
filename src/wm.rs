@@ -82,6 +82,18 @@ struct Managed {
     floating: bool,
 }
 
+/// A mod+drag in progress.
+struct Drag {
+    h: Hwnd,
+    kind: u8,
+    /// Pointer position when the drag started.
+    start: (i32, i32),
+    /// Window rectangle when the drag started.
+    rect: Rect,
+    /// Pointer position at the last resize step (tiled resizing).
+    last: (i32, i32),
+}
+
 pub struct Wm {
     cfg: Config,
     ctrl: Hwnd,
@@ -97,6 +109,7 @@ pub struct Wm {
     binds: Vec<Bind>,
     /// Window rectangles when a mouse move/resize started (to tell them apart).
     move_start: HashMap<Hwnd, Rect>,
+    drag: Option<Drag>,
     /// The rectangle tessera last gave each window, so that a window covering
     /// its monitor because *tessera* put it there is not mistaken for an app
     /// that went fullscreen by itself.
@@ -124,6 +137,7 @@ impl Wm {
             active_monitor: 0,
             binds: Vec::new(),
             move_start: HashMap::new(),
+            drag: None,
             placed: std::cell::RefCell::new(HashMap::new()),
             active_border: 0,
             inactive_border: 0,
@@ -295,6 +309,8 @@ impl Wm {
             config::StartMenu::Never => keyboard::StartMenu::Never,
         });
         mouse::set_wheel_binds(wheel);
+        let drag_mods = if self.cfg.general.mouse_drag { self.cfg.main_mod().unwrap_or(0) } else { 0 };
+        mouse::set_drag_modifiers(drag_mods);
     }
 
     fn unregister_hotkeys(&mut self) {
@@ -864,7 +880,11 @@ impl Wm {
 
     /// The pointer moved: focus the managed window under it.
     pub fn on_mouse_move(&mut self) {
-        if !self.cfg.general.focus_follows_mouse || win::mouse_button_down() || launcher::is_open() {
+        if !self.cfg.general.focus_follows_mouse
+            || win::mouse_button_down()
+            || launcher::is_open()
+            || mouse::drag_kind() != mouse::DRAG_NONE
+        {
             return;
         }
         // The position from the hook event itself: GetCursorPos can still
@@ -888,6 +908,114 @@ impl Wm {
         if target.is_some() || monitor_changed {
             self.refresh_bars();
         }
+    }
+
+    /// mod+drag: the left button moves the window under the pointer, the
+    /// right button resizes it (floating) or moves its split (tiled).
+    pub fn on_drag(&mut self, phase: usize, kind: u8) {
+        let (x, y) = mouse::last_pos();
+        match phase {
+            mouse::DRAG_PHASE_START => {
+                let h = win::window_at(x, y);
+                let visible = self.windows.get(&h).is_some_and(|m| self.monitor_of_ws(m.ws).is_some());
+                if !visible {
+                    self.drag = None;
+                    return;
+                }
+                self.focus_window(h);
+                win::raise_now(h);
+                self.drag = Some(Drag { h, kind, start: (x, y), rect: win::window_rect(h), last: (x, y) });
+                self.refresh_bars();
+            }
+            mouse::DRAG_PHASE_MOVE => {
+                let Some(d) = self.drag.as_mut() else { return };
+                let (h, start, rect, last) = (d.h, d.start, d.rect, d.last);
+                let (dx, dy) = (x - start.0, y - start.1);
+                let Some((ws, floating)) = self.windows.get(&h).map(|m| (m.ws, m.floating)) else { return };
+                if kind == mouse::DRAG_MOVE {
+                    // The window follows the pointer (tiles snap back or swap
+                    // when dropped).
+                    win::set_window_rect(h, Rect { x: rect.x + dx, y: rect.y + dy, ..rect });
+                } else if floating {
+                    let min = 120;
+                    win::set_window_rect(h, Rect { w: (rect.w + dx).max(min), h: (rect.h + dy).max(min), ..rect });
+                } else if let Some(mi) = self.monitor_of_ws(ws) {
+                    // Move the split dividers by the pointer's movement.
+                    let area = self.tiling_area(mi);
+                    let (sx, sy) = (x - last.0, y - last.1);
+                    let tree = &mut self.workspaces[ws].tree;
+                    let mut changed = false;
+                    if sx != 0 {
+                        let dir = if sx > 0 { Dir::Right } else { Dir::Left };
+                        changed |= tree.resize(h, dir, sx.unsigned_abs() as f32 / area.w.max(1) as f32);
+                    }
+                    if sy != 0 {
+                        let dir = if sy > 0 { Dir::Down } else { Dir::Up };
+                        changed |= tree.resize(h, dir, sy.unsigned_abs() as f32 / area.h.max(1) as f32);
+                    }
+                    if let Some(d) = self.drag.as_mut() {
+                        d.last = (x, y);
+                    }
+                    if changed {
+                        self.layout_ws(ws);
+                    }
+                }
+            }
+            _ => {
+                let Some(d) = self.drag.take() else { return };
+                if d.kind == mouse::DRAG_MOVE {
+                    self.drop_window(d.h, x, y);
+                } else if let Some(ws) = self.windows.get(&d.h).map(|m| m.ws) {
+                    self.layout_ws(ws);
+                }
+                self.refresh_bars();
+            }
+        }
+    }
+
+    /// Finishes a mod+drag move: dropping on a bar's workspace pill sends the
+    /// window to that workspace; on another tile swaps them; on another
+    /// monitor moves the window there; anywhere else snaps it back.
+    fn drop_window(&mut self, h: Hwnd, x: i32, y: i32) {
+        let Some((src, floating)) = self.windows.get(&h).map(|m| (m.ws, m.floating)) else { return };
+        let mi = self.monitor_index(win::monitor_at(x, y));
+        if let Some(n) = self.monitors[mi].bar.as_ref().and_then(|b| b.workspace_at(x, y)) {
+            let target = mi * WORKSPACES + n;
+            if target != src {
+                let tile_target = self.workspaces[target].last_focus;
+                self.transfer(h, target, tile_target);
+                if self.monitor_of_ws(target).is_some() {
+                    self.layout_ws(target);
+                } else {
+                    hidden::hide(h);
+                    self.set_focused(None);
+                    self.focus_in_ws(src);
+                }
+            }
+            self.layout_ws(src);
+            return;
+        }
+        let dst = self.monitors[mi].ws;
+        if floating {
+            // Floating windows stay where they were dropped.
+            if dst != src {
+                self.transfer(h, dst, None);
+            }
+            return;
+        }
+        let under = self
+            .ws_rects(dst)
+            .into_iter()
+            .find(|(o, r)| *o != h && !self.workspaces[dst].floating.contains(o) && r.contains(x, y))
+            .map(|(o, _)| o);
+        if dst != src {
+            self.transfer(h, dst, under);
+            self.layout_ws(src);
+        } else if let Some(other) = under {
+            self.workspaces[dst].tree.swap(h, other);
+        }
+        self.layout_ws(dst);
+        self.set_focused(Some(h));
     }
 
     /// Handles clicks and scrolls on a bar.

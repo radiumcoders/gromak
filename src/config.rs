@@ -99,6 +99,8 @@ pub struct General {
     pub focus_follows_mouse: bool,
     /// What a lone press of the Win key does.
     pub start_menu: StartMenu,
+    /// mod+left-drag moves windows, mod+right-drag resizes them.
+    pub mouse_drag: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -221,6 +223,7 @@ impl Default for General {
             hide_taskbar: false,
             focus_follows_mouse: false,
             start_menu: StartMenu::Tap,
+            mouse_drag: true,
         }
     }
 }

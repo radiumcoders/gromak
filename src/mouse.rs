@@ -8,14 +8,15 @@
 
 use crate::config::{MOD_ALT, MOD_WIN, VK_WHEEL_DOWN, VK_WHEEL_UP};
 use std::ptr::{null, null_mut};
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, AtomicU8, Ordering};
 use std::sync::Mutex;
 use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetMessageW, PostThreadMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HC_ACTION, MSG,
-    MSLLHOOKSTRUCT, WHEEL_DELTA, WH_MOUSE_LL, WM_APP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_QUIT,
+    MSLLHOOKSTRUCT, WHEEL_DELTA, WH_MOUSE_LL, WM_APP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+    WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP,
 };
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
@@ -99,10 +100,16 @@ unsafe extern "system" fn hook_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESUL
     if code == HC_ACTION as i32 && wp as u32 == WM_MOUSEWHEEL && handle_wheel(lp) {
         return 1;
     }
+    if code == HC_ACTION as i32 && handle_drag(wp as u32, lp) {
+        return 1;
+    }
     if code == HC_ACTION as i32 && wp as u32 == WM_MOUSEMOVE {
         let info = &*(lp as *const MSLLHOOKSTRUCT);
         LAST_X.store(info.pt.x, Ordering::Relaxed);
         LAST_Y.store(info.pt.y, Ordering::Relaxed);
+        if DRAG.load(Ordering::Relaxed) != DRAG_NONE && !DRAG_PENDING.swap(true, Ordering::Relaxed) {
+            crate::post_to_ctrl(crate::WM_APP_DRAG, DRAG_PHASE_MOVE, 0);
+        }
     }
     if code == HC_ACTION as i32
         && wp as u32 == WM_MOUSEMOVE
@@ -158,4 +165,72 @@ unsafe fn handle_wheel(lp: LPARAM) -> bool {
         PostThreadMessageW(THREAD_ID.load(Ordering::Relaxed), WM_MASK, 0, 0);
     }
     true
+}
+
+// ----- mod+drag --------------------------------------------------------------
+
+pub const DRAG_NONE: u8 = 0;
+/// Left button: move the window.
+pub const DRAG_MOVE: u8 = 1;
+/// Right button: resize the window.
+pub const DRAG_RESIZE: u8 = 2;
+
+/// `wparam` of `WM_APP_DRAG`.
+pub const DRAG_PHASE_START: usize = 0;
+pub const DRAG_PHASE_MOVE: usize = 1;
+pub const DRAG_PHASE_END: usize = 2;
+
+/// The drag in progress (`DRAG_*`).
+static DRAG: AtomicU8 = AtomicU8::new(DRAG_NONE);
+/// A drag-move message is queued and not yet handled.
+static DRAG_PENDING: AtomicBool = AtomicBool::new(false);
+/// Modifiers that turn a click into a drag (0 = dragging disabled).
+static DRAG_MODS: AtomicU32 = AtomicU32::new(0);
+
+/// Enables mod+drag with these modifiers (0 disables it).
+pub fn set_drag_modifiers(mods: u32) {
+    DRAG_MODS.store(mods, Ordering::Relaxed);
+}
+
+/// The kind of drag in progress (`DRAG_*`).
+pub fn drag_kind() -> u8 {
+    DRAG.load(Ordering::Relaxed)
+}
+
+/// Called by the window manager when it handles a drag-move message.
+pub fn drag_handled() {
+    DRAG_PENDING.store(false, Ordering::Relaxed);
+}
+
+/// Starts, ends or swallows clicks for mod+drag. Returns whether the event
+/// should be swallowed.
+unsafe fn handle_drag(msg: u32, lp: LPARAM) -> bool {
+    let kind = match msg {
+        WM_LBUTTONDOWN | WM_LBUTTONUP => DRAG_MOVE,
+        WM_RBUTTONDOWN | WM_RBUTTONUP => DRAG_RESIZE,
+        _ => return false,
+    };
+    let down = msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN;
+    if down {
+        let mods = DRAG_MODS.load(Ordering::Relaxed);
+        if mods == 0 || crate::keyboard::current_mods() != mods || DRAG.load(Ordering::Relaxed) != DRAG_NONE {
+            return false;
+        }
+        let info = &*(lp as *const MSLLHOOKSTRUCT);
+        LAST_X.store(info.pt.x, Ordering::Relaxed);
+        LAST_Y.store(info.pt.y, Ordering::Relaxed);
+        DRAG.store(kind, Ordering::Relaxed);
+        crate::keyboard::note_win_combo();
+        crate::post_to_ctrl(crate::WM_APP_DRAG, DRAG_PHASE_START, kind as isize);
+        true
+    } else if DRAG.load(Ordering::Relaxed) == kind {
+        DRAG.store(DRAG_NONE, Ordering::Relaxed);
+        crate::post_to_ctrl(crate::WM_APP_DRAG, DRAG_PHASE_END, kind as isize);
+        if DRAG_MODS.load(Ordering::Relaxed) & (MOD_WIN | MOD_ALT) != 0 {
+            PostThreadMessageW(THREAD_ID.load(Ordering::Relaxed), WM_MASK, 0, 0);
+        }
+        true
+    } else {
+        false
+    }
 }

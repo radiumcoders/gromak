@@ -24,6 +24,11 @@ focus_follows_mouse = false
 # "double_tap" does nothing unless you tap twice quickly, "never" never opens
 # it. Win+key combinations are not affected.
 start_menu = "tap"
+# Hold mod and drag with the left mouse button to move a window (drop it on
+# another tile to swap, on another monitor to move it there, or on a bar
+# workspace pill to send it to that workspace); drag with the right button to
+# resize it.
+mouse_drag = true
 
 [theme]
 # Where colours come from:

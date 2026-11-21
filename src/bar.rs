@@ -206,6 +206,17 @@ impl Bar {
         }
     }
 
+    /// The workspace pill (0-based number on this monitor) at a screen point.
+    pub fn workspace_at(&self, x: i32, y: i32) -> Option<usize> {
+        with_model(self.hwnd, |m| {
+            if !m.rect.contains(x, y) {
+                return None;
+            }
+            hit(&m.hits, (x - m.rect.x) as f32)
+        })
+        .flatten()
+    }
+
     /// Shows a transient message (e.g. a config error) in place of the title.
     pub fn notify(&self, text: &str) {
         with_model(self.hwnd, |model| model.notice = Some((text.to_string(), Instant::now() + NOTICE_DURATION)));
