@@ -71,9 +71,11 @@ impl Gif {
 static CATALOG: Mutex<Vec<Gif>> = Mutex::new(Vec::new());
 static FETCHING: AtomicBool = AtomicBool::new(false);
 static POSTERS_IN_FLIGHT: Mutex<Vec<String>> = Mutex::new(Vec::new());
-/// Posters that failed to download this session; not retried (the launcher
-/// redraws often, and each redraw would otherwise start a new download).
-static POSTERS_FAILED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// Posters that failed to download recently, with when. The launcher redraws
+/// often and each redraw would otherwise start a new download, so a failed
+/// poster waits [`RETRY_AFTER`] before it is tried again.
+static POSTERS_FAILED: Mutex<Vec<(String, std::time::Instant)>> = Mutex::new(Vec::new());
+const RETRY_AFTER: Duration = Duration::from_secs(30);
 /// Makes temporary download names unique across concurrent downloads.
 static DOWNLOAD_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -257,8 +259,12 @@ pub fn ensure_poster(gif: &Gif, style: GifStyle, done: impl Fn() + Send + 'stati
     }
     let key = format!("{}:{}", gif.effective(style).name(), gif.slug);
     {
-        if POSTERS_FAILED.lock().unwrap_or_else(|e| e.into_inner()).contains(&key) {
-            return;
+        {
+            let mut failed = POSTERS_FAILED.lock().unwrap_or_else(|e| e.into_inner());
+            failed.retain(|(_, when)| when.elapsed() < RETRY_AFTER);
+            if failed.iter().any(|(k, _)| *k == key) {
+                return;
+            }
         }
         let mut in_flight = POSTERS_IN_FLIGHT.lock().unwrap_or_else(|e| e.into_inner());
         if in_flight.contains(&key) {
@@ -273,7 +279,7 @@ pub fn ensure_poster(gif: &Gif, style: GifStyle, done: impl Fn() + Send + 'stati
             Ok(()) => done(),
             Err(e) => {
                 warn!("orc.pictures: {e}");
-                POSTERS_FAILED.lock().unwrap_or_else(|e| e.into_inner()).push(key.clone());
+                POSTERS_FAILED.lock().unwrap_or_else(|e| e.into_inner()).push((key.clone(), std::time::Instant::now()));
             }
         }
         POSTERS_IN_FLIGHT.lock().unwrap_or_else(|e| e.into_inner()).retain(|k| *k != key);
