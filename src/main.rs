@@ -77,6 +77,7 @@ USAGE:
     tessera --config-path    print where the config file lives
     tessera --default-config print the default config
     tessera --restore        show windows a crashed session left hidden
+                             (refuses while tessera runs; add --force)
     tessera --version        print the version
     tessera --help           print this help
 ";
@@ -165,7 +166,15 @@ fn run_cli(args: &[String]) -> i32 {
                 println!("{:<28} {:<36} {}", info.exe, info.class, info.title);
             }
         }
-        "--restore" => println!("restored {} window(s)", wm::recover_hidden()),
+        "--restore" => {
+            // While tessera runs, its windows on other workspaces are hidden on
+            // purpose; showing them behind its back would scramble its state.
+            if !acquire_single_instance() && args.get(1).map(String::as_str) != Some("--force") {
+                eprintln!("tessera is running; exit it first (or pass --restore --force)");
+                return 1;
+            }
+            println!("restored {} window(s)", wm::recover_hidden())
+        }
         other => {
             eprintln!("unknown argument: {other}\n\n{USAGE}");
             return 2;

@@ -74,6 +74,8 @@ const OPEN_ANIMATION: Duration = Duration::from_millis(140);
 const CARET_BLINK_MS: u32 = 530;
 /// Posted to the launcher window when a background re-index finishes.
 const WM_APPS_INDEXED: u32 = WM_APP + 60;
+/// Posted when a thumbnail finished downloading: redraw only, keep the list.
+const WM_LAUNCHER_REDRAW: u32 = WM_APP + 61;
 
 /// An entry from the AppsFolder.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -277,6 +279,14 @@ fn notify_launcher() {
     }
 }
 
+/// Asks the launcher to redraw (a thumbnail arrived); safe from any thread.
+fn redraw_launcher() {
+    let hwnd = HWND_LAUNCHER.load(Ordering::Relaxed);
+    if hwnd != 0 {
+        unsafe { PostMessageW(hwnd as HWND, WM_LAUNCHER_REDRAW, 0, 0) };
+    }
+}
+
 fn index_snapshot() -> (Vec<App>, bool) {
     let guard = INDEX.lock().unwrap_or_else(|e| e.into_inner());
     match guard.as_ref() {
@@ -423,7 +433,10 @@ fn close(restore_focus: bool) {
     if !OPEN.swap(false, Ordering::Relaxed) {
         return;
     }
-    let Some((hwnd, previous)) = with_state(|l| (l.hwnd, l.previous_foreground)) else { return };
+    // The handle comes from the atomic so the window is hidden even if the
+    // state happens to be borrowed (re-entrant call).
+    let hwnd = HWND_LAUNCHER.load(Ordering::Relaxed);
+    let previous = with_state(|l| l.previous_foreground).unwrap_or(0);
     unsafe {
         KillTimer(hwnd as HWND, CARET_TIMER);
         KillTimer(hwnd as HWND, ANIM_TIMER);
@@ -564,6 +577,19 @@ impl Launcher {
                 self.rows.push(Row::Message("Indexing apps…"));
             }
         }
+    }
+
+    /// A stable identity for the row at `index`, to keep the selection on
+    /// the same item when the list is rebuilt.
+    fn row_key(&self, index: usize) -> Option<String> {
+        Some(match self.rows.get(index)? {
+            Row::Calc(_) => "calc".into(),
+            Row::Emoji(e, _) => format!("emoji:{}", e.glyph),
+            Row::Gif(i, _) => format!("gif:{}", self.gifs[*i].slug),
+            Row::App(i, _) => format!("app:{}", self.apps[*i].target),
+            Row::Run(cmd) => format!("run:{cmd}"),
+            Row::Message(text) => format!("msg:{text}"),
+        })
     }
 
     fn select(&mut self, delta: isize) {
@@ -776,23 +802,19 @@ unsafe extern "system" fn launcher_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LP
                 if !is_open() {
                     return Action::Nothing;
                 }
-                let selected_target = match l.rows.get(l.selected) {
-                    Some(Row::App(i, _)) => Some(l.apps[*i].target.clone()),
-                    _ => None,
-                };
+                let selected = l.row_key(l.selected);
                 l.apps = apps;
                 l.refilter();
-                // Keep the selection on the same app if it is still listed.
-                if let Some(target) = selected_target {
-                    if let Some(pos) =
-                        l.rows.iter().position(|r| matches!(r, Row::App(i, _) if l.apps[*i].target == target))
-                    {
-                        l.select(pos as isize);
-                    }
+                // Keep the selection on the same row if it is still listed.
+                if let Some(pos) =
+                    selected.and_then(|key| (0..l.rows.len()).position(|i| l.row_key(i).as_ref() == Some(&key)))
+                {
+                    l.select(pos as isize);
                 }
                 Action::Render
             })
         }
+        WM_LAUNCHER_REDRAW => Some(if is_open() { Action::Render } else { Action::Nothing }),
         _ => return DefWindowProcW(hwnd, msg, wp, lp),
     };
     match action {
@@ -1133,7 +1155,7 @@ impl Launcher {
                             let bitmap = crate::gfx::file_bitmap(f, &gfx.target, &poster);
                             gfx.icons.insert(key.clone(), bitmap);
                         } else {
-                            orc::ensure_poster(gif, style, notify_launcher);
+                            orc::ensure_poster(gif, style, redraw_launcher);
                         }
                     }
                     match gfx.icons.get(&key) {

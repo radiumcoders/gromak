@@ -244,6 +244,11 @@ impl Parser {
 
 /// Evaluates an expression, or `None` if it is not valid maths.
 pub fn evaluate(input: &str) -> Option<f64> {
+    // The parser is recursive: bound the input so a pasted wall of "(((("
+    // cannot overflow the stack.
+    if input.len() > 256 {
+        return None;
+    }
     let tokens = tokenize(input)?;
     if tokens.is_empty() {
         return None;
@@ -340,6 +345,8 @@ mod tests {
         assert_eq!(evaluate("1/0"), None);
         assert_eq!(evaluate("sqrt(-1)"), None);
         assert_eq!(evaluate("3!!x"), None);
+        assert_eq!(evaluate(&"(".repeat(10_000)), None);
+        assert_eq!(evaluate(&"-".repeat(10_000)), None);
     }
 
     #[test]

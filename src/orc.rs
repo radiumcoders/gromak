@@ -71,13 +71,22 @@ impl Gif {
 static CATALOG: Mutex<Vec<Gif>> = Mutex::new(Vec::new());
 static FETCHING: AtomicBool = AtomicBool::new(false);
 static POSTERS_IN_FLIGHT: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// Posters that failed to download this session; not retried (the launcher
+/// redraws often, and each redraw would otherwise start a new download).
+static POSTERS_FAILED: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// Makes temporary download names unique across concurrent downloads.
 static DOWNLOAD_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// `^[a-z0-9]+(-[a-z0-9]+)*$`, at most 80 characters: slugs end up in file
 /// names, so anything else is rejected.
 pub fn valid_slug(slug: &str) -> bool {
+    // Reserved device names cannot be used as file names on Windows.
+    const RESERVED: [&str; 22] = [
+        "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9", "lpt1",
+        "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+    ];
     !slug.is_empty()
+        && !RESERVED.contains(&slug)
         && slug.len() <= 80
         && slug
             .split('-')
@@ -248,6 +257,9 @@ pub fn ensure_poster(gif: &Gif, style: GifStyle, done: impl Fn() + Send + 'stati
     }
     let key = format!("{}:{}", gif.effective(style).name(), gif.slug);
     {
+        if POSTERS_FAILED.lock().unwrap_or_else(|e| e.into_inner()).contains(&key) {
+            return;
+        }
         let mut in_flight = POSTERS_IN_FLIGHT.lock().unwrap_or_else(|e| e.into_inner());
         if in_flight.contains(&key) {
             return;
@@ -259,7 +271,10 @@ pub fn ensure_poster(gif: &Gif, style: GifStyle, done: impl Fn() + Send + 'stati
     std::thread::spawn(move || {
         match download(&url, &dest, &[b"\xFF\xD8\xFF"]) {
             Ok(()) => done(),
-            Err(e) => warn!("orc.pictures: {e}"),
+            Err(e) => {
+                warn!("orc.pictures: {e}");
+                POSTERS_FAILED.lock().unwrap_or_else(|e| e.into_inner()).push(key.clone());
+            }
         }
         POSTERS_IN_FLIGHT.lock().unwrap_or_else(|e| e.into_inner()).retain(|k| *k != key);
     });
@@ -345,6 +360,8 @@ mod tests {
         assert!(!valid_slug("double--dash"));
         assert!(!valid_slug("../etc"));
         assert!(!valid_slug("UPPER"));
+        assert!(!valid_slug("con"));
+        assert!(!valid_slug("nul"));
     }
 
     #[test]
