@@ -311,7 +311,8 @@ pub fn set_window_rect(h: Hwnd, r: Rect) {
         let target = to_win_rect(r);
         // Crossing to a monitor with a different DPI makes the window rescale
         // itself after the first move; a second call corrects the size.
-        let crosses = MonitorFromWindow(hw(h), MONITOR_DEFAULTTONEAREST) != MonitorFromRect(&target, MONITOR_DEFAULTTONEAREST);
+        let crosses =
+            MonitorFromWindow(hw(h), MONITOR_DEFAULTTONEAREST) != MonitorFromRect(&target, MONITOR_DEFAULTTONEAREST);
         for _ in 0..if crosses { 2 } else { 1 } {
             SetWindowPos(hw(h), null_mut(), r.x - l, r.y - t, r.w + l + rr, r.h + t + b, flags);
         }
@@ -321,15 +322,7 @@ pub fn set_window_rect(h: Hwnd, r: Rect) {
 /// Brings `h` to the top of the (non-topmost) z-order without activating it.
 pub fn raise(h: Hwnd) {
     unsafe {
-        SetWindowPos(
-            hw(h),
-            HWND_TOP,
-            0,
-            0,
-            0,
-            0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS,
-        );
+        SetWindowPos(hw(h), HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
     }
 }
 
@@ -395,7 +388,12 @@ pub fn close(h: Hwnd) {
 /// Sets the Windows 11 DWM border colour (`COLORREF`, or [`BORDER_DEFAULT`]).
 pub fn set_border_color(h: Hwnd, color: u32) {
     unsafe {
-        DwmSetWindowAttribute(hw(h), DWMWA_BORDER_COLOR, &color as *const u32 as *const c_void, size_of::<u32>() as u32);
+        DwmSetWindowAttribute(
+            hw(h),
+            DWMWA_BORDER_COLOR,
+            &color as *const u32 as *const c_void,
+            size_of::<u32>() as u32,
+        );
     }
 }
 
@@ -471,12 +469,7 @@ fn monitor_info(handle: isize) -> Option<MonitorInfo> {
         if GetDpiForMonitor(handle as HMONITOR, MDT_EFFECTIVE_DPI, &mut dx, &mut dy) != 0 {
             dx = 96;
         }
-        Some(MonitorInfo {
-            handle,
-            rect: to_rect(mi.rcMonitor),
-            work: to_rect(mi.rcWork),
-            scale: dx as f32 / 96.0,
-        })
+        Some(MonitorInfo { handle, rect: to_rect(mi.rcMonitor), work: to_rect(mi.rcWork), scale: dx as f32 / 96.0 })
     }
 }
 

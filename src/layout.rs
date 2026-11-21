@@ -35,12 +35,7 @@ impl Rect {
 
     /// Shrinks the rectangle by `n` pixels on every side.
     pub fn inset(&self, n: i32) -> Rect {
-        Rect::new(
-            self.x + n,
-            self.y + n,
-            (self.w - 2 * n).max(0),
-            (self.h - 2 * n).max(0),
-        )
+        Rect::new(self.x + n, self.y + n, (self.w - 2 * n).max(0), (self.h - 2 * n).max(0))
     }
 
     /// A rectangle of `w`×`h` centered inside `self`.
@@ -92,17 +87,11 @@ fn split_rect(r: Rect, horizontal: bool, ratio: f32, gap: i32) -> (Rect, Rect) {
     if horizontal {
         let avail = (r.w - gap).max(0);
         let aw = (avail as f32 * ratio).round() as i32;
-        (
-            Rect { w: aw, ..r },
-            Rect { x: r.x + aw + gap, w: avail - aw, ..r },
-        )
+        (Rect { w: aw, ..r }, Rect { x: r.x + aw + gap, w: avail - aw, ..r })
     } else {
         let avail = (r.h - gap).max(0);
         let ah = (avail as f32 * ratio).round() as i32;
-        (
-            Rect { h: ah, ..r },
-            Rect { y: r.y + ah + gap, h: avail - ah, ..r },
-        )
+        (Rect { h: ah, ..r }, Rect { y: r.y + ah + gap, h: avail - ah, ..r })
     }
 }
 
@@ -152,18 +141,11 @@ fn insert_at(node: &mut Node, rect: Rect, gap: i32, target: isize, id: isize) ->
 fn remove_node(node: Node, id: isize) -> Option<Node> {
     match node {
         Node::Leaf(w) => (w != id).then_some(Node::Leaf(w)),
-        Node::Split { horizontal, ratio, a, b } => {
-            match (remove_node(*a, id), remove_node(*b, id)) {
-                (Some(a), Some(b)) => Some(Node::Split {
-                    horizontal,
-                    ratio,
-                    a: Box::new(a),
-                    b: Box::new(b),
-                }),
-                (Some(x), None) | (None, Some(x)) => Some(x),
-                (None, None) => None,
-            }
-        }
+        Node::Split { horizontal, ratio, a, b } => match (remove_node(*a, id), remove_node(*b, id)) {
+            (Some(a), Some(b)) => Some(Node::Split { horizontal, ratio, a: Box::new(a), b: Box::new(b) }),
+            (Some(x), None) | (None, Some(x)) => Some(x),
+            (None, None) => None,
+        },
     }
 }
 

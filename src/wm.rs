@@ -349,7 +349,10 @@ impl Wm {
         }
         let info = win::WindowInfo::of(h);
         if !self.elevated && win::process_elevated(info.pid) {
-            info!("ignoring elevated window \"{}\" ({}); run tessera as administrator to manage it", info.title, info.exe);
+            info!(
+                "ignoring elevated window \"{}\" ({}); run tessera as administrator to manage it",
+                info.title, info.exe
+            );
             self.ignored.insert(h);
             return false;
         }
@@ -496,10 +499,7 @@ impl Wm {
     /// Focuses the workspace's last focused window, or the desktop if empty.
     fn focus_in_ws(&mut self, ws: usize) {
         let windows = self.workspaces[ws].windows();
-        let pick = self.workspaces[ws]
-            .last_focus
-            .filter(|h| windows.contains(h))
-            .or_else(|| windows.first().copied());
+        let pick = self.workspaces[ws].last_focus.filter(|h| windows.contains(h)).or_else(|| windows.first().copied());
         match pick {
             Some(h) => self.focus_window(h),
             None => {
@@ -988,7 +988,8 @@ mod hidden {
         let content: String = set().iter().map(|(h, class)| format!("{h}\t{class}\n")).collect();
         let path = path();
         let result = if content.is_empty() {
-            std::fs::remove_file(&path).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) })
+            std::fs::remove_file(&path)
+                .or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) })
         } else {
             std::fs::create_dir_all(crate::log::data_dir()).and_then(|_| std::fs::write(&path, content))
         };

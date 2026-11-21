@@ -84,23 +84,13 @@ pub struct Rule {
 
 impl Default for General {
     fn default() -> Self {
-        General {
-            gaps_in: 5,
-            gaps_out: 10,
-            modifier: "alt".into(),
-            terminal: "wt.exe".into(),
-            hide_taskbar: false,
-        }
+        General { gaps_in: 5, gaps_out: 10, modifier: "alt".into(), terminal: "wt.exe".into(), hide_taskbar: false }
     }
 }
 
 impl Default for Decoration {
     fn default() -> Self {
-        Decoration {
-            borders: true,
-            active_border: "#8aadf4".into(),
-            inactive_border: "#363a4f".into(),
-        }
+        Decoration { borders: true, active_border: "#8aadf4".into(), inactive_border: "#363a4f".into() }
     }
 }
 
@@ -160,10 +150,7 @@ impl Rule {
         }
         let exe_ok = self.exe.as_ref().is_none_or(|e| e.eq_ignore_ascii_case(exe));
         let class_ok = self.class.as_ref().is_none_or(|c| c.eq_ignore_ascii_case(class));
-        let title_ok = self
-            .title
-            .as_ref()
-            .is_none_or(|t| title.to_lowercase().contains(&t.to_lowercase()));
+        let title_ok = self.title.as_ref().is_none_or(|t| title.to_lowercase().contains(&t.to_lowercase()));
         exe_ok && class_ok && title_ok
     }
 }
@@ -221,8 +208,7 @@ impl Config {
     pub fn main_mod(&self) -> Result<u32, String> {
         let mut mods = 0;
         for part in self.general.modifier.split('+') {
-            mods |= parse_modifier(part.trim())
-                .ok_or_else(|| format!("general.mod: unknown modifier \"{part}\""))?;
+            mods |= parse_modifier(part.trim()).ok_or_else(|| format!("general.mod: unknown modifier \"{part}\""))?;
         }
         Ok(mods)
     }
@@ -387,10 +373,7 @@ fn parse_dir(s: &str) -> Result<Dir, String> {
 fn parse_ws(s: &str) -> Result<WsTarget, String> {
     let rel = s.strip_prefix('e').unwrap_or(s);
     if rel.starts_with('+') || rel.starts_with('-') {
-        return rel
-            .parse::<i32>()
-            .map(WsTarget::Relative)
-            .map_err(|_| format!("invalid relative workspace \"{s}\""));
+        return rel.parse::<i32>().map(WsTarget::Relative).map_err(|_| format!("invalid relative workspace \"{s}\""));
     }
     match s.parse::<usize>() {
         Ok(n) if (1..=WORKSPACES).contains(&n) => Ok(WsTarget::Index(n - 1)),
@@ -476,10 +459,7 @@ mod tests {
 
     #[test]
     fn parses_hotkeys() {
-        assert_eq!(
-            parse_hotkey("mod+shift+h", MOD_ALT),
-            Ok(Hotkey { mods: MOD_ALT | MOD_SHIFT, vk: 'H' as u32 })
-        );
+        assert_eq!(parse_hotkey("mod+shift+h", MOD_ALT), Ok(Hotkey { mods: MOD_ALT | MOD_SHIFT, vk: 'H' as u32 }));
         assert_eq!(parse_hotkey("win+return", 0), Ok(Hotkey { mods: MOD_WIN, vk: 0x0D }));
         assert_eq!(parse_hotkey("ctrl+alt+f12", 0).unwrap().vk, 0x7B);
         assert_eq!(parse_hotkey("mod+0", MOD_WIN).unwrap().vk, '0' as u32);

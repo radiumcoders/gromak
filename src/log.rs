@@ -21,9 +21,7 @@ pub fn disable_stderr() {
 
 /// `%LOCALAPPDATA%\tessera`, where runtime state and logs live.
 pub fn data_dir() -> PathBuf {
-    let base = std::env::var_os("LOCALAPPDATA")
-        .or_else(|| std::env::var_os("TEMP"))
-        .unwrap_or_else(|| ".".into());
+    let base = std::env::var_os("LOCALAPPDATA").or_else(|| std::env::var_os("TEMP")).unwrap_or_else(|| ".".into());
     PathBuf::from(base).join("tessera")
 }
 
