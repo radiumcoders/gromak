@@ -8,6 +8,7 @@
 mod log;
 mod bar;
 mod config;
+mod fuzzy;
 mod gfx;
 mod keyboard;
 mod layout;
