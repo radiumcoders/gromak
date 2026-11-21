@@ -63,6 +63,10 @@ pub struct Bar {
     pub foreground: String,
     pub accent: String,
     pub muted: String,
+    /// Opacity of the bar islands, 0.0 (invisible) to 1.0 (solid).
+    pub opacity: f32,
+    /// Corner radius of the islands in logical pixels.
+    pub corner_radius: i32,
     pub show_title: bool,
     pub show_clock: bool,
     pub clock_24h: bool,
@@ -98,13 +102,15 @@ impl Default for Bar {
     fn default() -> Self {
         Bar {
             enabled: true,
-            height: 30,
+            height: 32,
             font: "Segoe UI Variable Text".into(),
             font_size: 13,
             background: "#181926".into(),
             foreground: "#cad3f5".into(),
             accent: "#8aadf4".into(),
             muted: "#5b6078".into(),
+            opacity: 0.9,
+            corner_radius: 10,
             show_title: true,
             show_clock: true,
             clock_24h: true,
@@ -192,6 +198,9 @@ pub fn parse(text: &str) -> Result<Config, String> {
         if parse_color(value).is_none() {
             return Err(format!("{name}: expected a colour like \"#rrggbb\", got \"{value}\""));
         }
+    }
+    if !(0.0..=1.0).contains(&cfg.bar.opacity) {
+        return Err(format!("bar.opacity must be between 0.0 and 1.0, got {}", cfg.bar.opacity));
     }
     for rule in &cfg.rules {
         if let Some(ws) = rule.workspace {
@@ -453,6 +462,7 @@ mod tests {
     fn rejects_unknown_fields_and_bad_values() {
         assert!(parse("[general]\ngap = 1").is_err());
         assert!(parse("[bar]\naccent = \"blue\"").is_err());
+        assert!(parse("[bar]\nopacity = 1.5").is_err());
         assert!(parse("[binds]\n\"mod+x\" = \"fly\"").is_err());
         assert!(parse("[[rules]]\nexe = \"a.exe\"\nworkspace = 11").is_err());
     }

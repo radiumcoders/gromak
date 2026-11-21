@@ -85,6 +85,8 @@ pub struct Wm {
     /// Windows that matched an `ignore` rule or cannot be managed (elevated).
     ignored: HashSet<Hwnd>,
     focused: Option<Hwnd>,
+    /// `HICON` of the focused window, shown in the bar.
+    focused_icon: isize,
     active_monitor: usize,
     binds: Vec<Bind>,
     active_border: u32,
@@ -102,6 +104,7 @@ impl Wm {
             windows: HashMap::new(),
             ignored: HashSet::new(),
             focused: None,
+            focused_icon: 0,
             active_monitor: 0,
             binds: Vec::new(),
             active_border: 0,
@@ -484,6 +487,9 @@ impl Wm {
 
     fn set_focused(&mut self, new: Option<Hwnd>) {
         let old = std::mem::replace(&mut self.focused, new);
+        if old != new {
+            self.focused_icon = new.map(win::window_icon).unwrap_or(0);
+        }
         if self.cfg.decoration.borders && old != new {
             if let Some(o) = old.filter(|o| self.windows.contains_key(o)) {
                 win::set_border_color(o, self.inactive_border);
@@ -539,6 +545,7 @@ impl Wm {
             bar.set_state(BarState {
                 workspaces,
                 title: if focused_ws == Some(mon.ws) { title.clone() } else { String::new() },
+                icon: if focused_ws == Some(mon.ws) { self.focused_icon } else { 0 },
                 focused_monitor: i == self.active_monitor,
             });
         }

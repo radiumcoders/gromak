@@ -35,12 +35,9 @@ fn hw(h: Hwnd) -> HWND {
 // DWM attributes, spelled out so we do not depend on SDK-version-specific names.
 const DWMWA_CLOAKED: u32 = 14;
 const DWMWA_EXTENDED_FRAME_BOUNDS: u32 = 9;
-const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
 const DWMWA_BORDER_COLOR: u32 = 34;
 /// Restores the system default border colour.
 pub const BORDER_DEFAULT: u32 = 0xFFFF_FFFF;
-/// Draws no border at all.
-pub const BORDER_NONE: u32 = 0xFFFF_FFFE;
 
 /// Window classes that are never tiled: shell surfaces and system popups.
 const IGNORED_CLASSES: &[&str] = &[
@@ -397,17 +394,27 @@ pub fn set_border_color(h: Hwnd, color: u32) {
     }
 }
 
-/// Asks DWM to round the corners of one of our own windows.
-pub fn round_corners(h: Hwnd) {
-    let round: i32 = 2; // DWMWCP_ROUND
-    unsafe {
-        DwmSetWindowAttribute(
-            hw(h),
-            DWMWA_WINDOW_CORNER_PREFERENCE,
-            &round as *const i32 as *const c_void,
-            size_of::<i32>() as u32,
-        );
+/// The window's small icon (`HICON`), or 0. The handle belongs to the
+/// window; do not destroy it. Hung windows are skipped rather than waited on.
+pub fn window_icon(h: Hwnd) -> isize {
+    const ICON_SMALL: usize = 0;
+    const ICON_BIG: usize = 1;
+    const ICON_SMALL2: usize = 2;
+    for kind in [ICON_SMALL2, ICON_SMALL, ICON_BIG] {
+        let mut icon: usize = 0;
+        let ok =
+            unsafe { SendMessageTimeoutW(hw(h), WM_GETICON, kind, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 50, &mut icon) };
+        if ok != 0 && icon != 0 {
+            return icon as isize;
+        }
     }
+    for index in [GCLP_HICONSM, GCLP_HICON] {
+        let icon = unsafe { GetClassLongPtrW(hw(h), index) };
+        if icon != 0 {
+            return icon as isize;
+        }
+    }
+    0
 }
 
 /// Releases the menu-bar activation that Windows performs when Alt or Win is

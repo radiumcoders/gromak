@@ -27,13 +27,17 @@ inactive_border = "#363a4f"
 [bar]
 enabled = true
 # Height in logical pixels (scaled with the monitor's DPI).
-height = 30
+height = 32
 font = "Segoe UI Variable Text"
 font_size = 13
 background = "#181926"
 foreground = "#cad3f5"
 accent = "#8aadf4"
 muted = "#5b6078"
+# The bar is drawn as floating islands; this is their opacity (0.0 - 1.0).
+opacity = 0.9
+# Corner radius of the islands, in logical pixels.
+corner_radius = 10
 show_title = true
 show_clock = true
 clock_24h = true
