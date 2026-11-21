@@ -18,9 +18,21 @@ terminal = "wt.exe"
 # Hide the Windows taskbar while tessera runs. It is restored on exit.
 hide_taskbar = false
 
+[theme]
+# Where colours come from:
+#   "wallpaper"  derived from your desktop wallpaper, and updated whenever the
+#                wallpaper changes (falls back to the accent colour for
+#                black-and-white wallpapers)
+#   "accent"     built around your Windows accent colour
+#   "manual"     the colours written in [decoration] and [bar] below
+source = "wallpaper"
+# "auto" follows Windows' light/dark mode; "dark" or "light" force one.
+mode = "auto"
+
 [decoration]
 # Colour the Windows 11 window border of the focused window.
 borders = true
+# Used when theme.source = "manual".
 active_border = "#8aadf4"
 inactive_border = "#363a4f"
 
@@ -30,6 +42,7 @@ enabled = true
 height = 32
 font = "Segoe UI Variable Text"
 font_size = 13
+# Colours used when theme.source = "manual".
 background = "#181926"
 foreground = "#cad3f5"
 accent = "#8aadf4"

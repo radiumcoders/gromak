@@ -24,6 +24,8 @@ pub struct Config {
     #[serde(default)]
     pub general: General,
     #[serde(default)]
+    pub theme: Theme,
+    #[serde(default)]
     pub decoration: Decoration,
     #[serde(default)]
     pub bar: Bar,
@@ -31,6 +33,37 @@ pub struct Config {
     pub binds: BTreeMap<String, String>,
     #[serde(default = "default_rules")]
     pub rules: Vec<Rule>,
+}
+
+/// Where tessera's colours come from.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeSource {
+    /// Derived from the desktop wallpaper, following it as it changes.
+    #[default]
+    Wallpaper,
+    /// Built around the Windows accent colour.
+    Accent,
+    /// The colours written in `[decoration]` and `[bar]`.
+    Manual,
+}
+
+/// Light or dark colours.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeMode {
+    /// Follow Windows' light/dark setting.
+    #[default]
+    Auto,
+    Dark,
+    Light,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Theme {
+    pub source: ThemeSource,
+    pub mode: ThemeMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -122,6 +155,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             general: General::default(),
+            theme: Theme::default(),
             decoration: Decoration::default(),
             bar: Bar::default(),
             binds: default_binds(),
@@ -459,10 +493,18 @@ mod tests {
     }
 
     #[test]
+    fn parses_theme_options() {
+        let cfg = parse("[theme]\nsource = \"accent\"\nmode = \"light\"").unwrap();
+        assert_eq!(cfg.theme, Theme { source: ThemeSource::Accent, mode: ThemeMode::Light });
+        assert_eq!(parse("").unwrap().theme.source, ThemeSource::Wallpaper);
+    }
+
+    #[test]
     fn rejects_unknown_fields_and_bad_values() {
         assert!(parse("[general]\ngap = 1").is_err());
         assert!(parse("[bar]\naccent = \"blue\"").is_err());
         assert!(parse("[bar]\nopacity = 1.5").is_err());
+        assert!(parse("[theme]\nsource = \"rainbow\"").is_err());
         assert!(parse("[binds]\n\"mod+x\" = \"fly\"").is_err());
         assert!(parse("[[rules]]\nexe = \"a.exe\"\nworkspace = 11").is_err());
     }

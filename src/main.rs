@@ -34,6 +34,13 @@ pub const WM_APP_BAR: u32 = WM_APP + 3;
 pub const WM_APP_QUIT: u32 = WM_APP + 4;
 /// The keyboard hook matched a binding: `wparam` is the binding id.
 pub const WM_APP_HOTKEY: u32 = WM_APP + 5;
+/// The wallpaper, accent colour or light/dark mode may have changed.
+pub const WM_APP_THEME: u32 = WM_APP + 6;
+
+/// How often the control window checks whether the theme inputs changed
+/// (slideshows and some wallpaper tools do not broadcast a change).
+const THEME_CHECK_MS: u32 = 5000;
+const THEME_TIMER: usize = 1;
 
 /// `lparam` is the 0-based workspace index that was clicked.
 pub const BAR_WORKSPACE: usize = 0;
@@ -101,6 +108,7 @@ fn main() {
         return;
     }
     CTRL_HWND.store(ctrl, Ordering::Relaxed);
+    unsafe { SetTimer(ctrl as HWND, THEME_TIMER, THEME_CHECK_MS, None) };
     let hooks = install_hooks();
     keyboard::start();
     unsafe { SetConsoleCtrlHandler(Some(console_handler), 1) };
@@ -183,6 +191,14 @@ unsafe extern "system" fn ctrl_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
             PostMessageW(hwnd, WM_APP_DISPLAY, 0, 0);
             0
         }
+        WM_SETTINGCHANGE if wp == SPI_SETDESKWALLPAPER as usize || is_color_set_change(lp) => {
+            PostMessageW(hwnd, WM_APP_THEME, 0, 0);
+            0
+        }
+        WM_TIMER if wp == THEME_TIMER => {
+            PostMessageW(hwnd, WM_APP_THEME, 0, 0);
+            0
+        }
         WM_ENDSESSION if wp != 0 => {
             // Logging off or shutting down: make sure no window stays hidden.
             wm::restore_hidden();
@@ -190,6 +206,18 @@ unsafe extern "system" fn ctrl_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
         }
         _ => DefWindowProcW(hwnd, msg, wp, lp),
     }
+}
+
+/// `WM_SETTINGCHANGE` with "ImmersiveColorSet": light/dark mode or the accent
+/// colour changed.
+fn is_color_set_change(lp: LPARAM) -> bool {
+    if lp == 0 {
+        return false;
+    }
+    let ptr = lp as *const u16;
+    let len = (0..64).take_while(|&i| unsafe { *ptr.add(i) } != 0).count();
+    let name = String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(ptr, len) });
+    name == "ImmersiveColorSet"
 }
 
 /// An invisible top-level window: the target for hotkeys and posted
@@ -275,7 +303,8 @@ fn run_message_loop(wm: &mut wm::Wm) {
             break;
         }
         let m = msg;
-        let handled = matches!(m.message, WM_HOTKEY | WM_APP_HOTKEY | WM_APP_EVENT | WM_APP_DISPLAY | WM_APP_BAR);
+        let handled =
+            matches!(m.message, WM_HOTKEY | WM_APP_HOTKEY | WM_APP_EVENT | WM_APP_DISPLAY | WM_APP_BAR | WM_APP_THEME);
         if !handled {
             unsafe {
                 TranslateMessage(&msg);
@@ -290,6 +319,7 @@ fn run_message_loop(wm: &mut wm::Wm) {
             WM_APP_EVENT => wm.on_event(m.wParam as u32, m.lParam),
             WM_APP_DISPLAY => wm.on_display_change(),
             WM_APP_BAR => wm.on_bar(m.wParam, m.lParam),
+            WM_APP_THEME => wm.on_theme_check(),
             _ => {}
         }));
         if result.is_err() {

@@ -276,7 +276,7 @@ fn load_pixels(path: &std::path::Path) -> windows::core::Result<Vec<Rgb>> {
         )?;
         let mut buf = vec![0u8; (sw * sh * 4) as usize];
         converter.CopyPixels(std::ptr::null(), sw * 4, &mut buf)?;
-        Ok(buf.chunks_exact(4).map(|p| [p[2], p[1], p[0]]).collect())
+        Ok(buf.as_chunks::<4>().0.iter().map(|p| [p[2], p[1], p[0]]).collect())
     }
 }
 

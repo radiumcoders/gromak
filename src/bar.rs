@@ -18,6 +18,7 @@
 
 use crate::config;
 use crate::layout::Rect;
+use crate::theme::Palette;
 use crate::win::{self, wide};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -103,13 +104,13 @@ pub struct Style {
 }
 
 impl Style {
-    pub fn from_config(cfg: &config::Bar, scale: f32) -> Self {
-        let color = |s: &str| config::parse_color(s).unwrap_or(0);
+    /// Layout options from the config, colours from the active palette.
+    pub fn new(cfg: &config::Bar, palette: &Palette, scale: f32) -> Self {
         Style {
-            background: color(&cfg.background),
-            foreground: color(&cfg.foreground),
-            accent: color(&cfg.accent),
-            muted: color(&cfg.muted),
+            background: palette.background,
+            foreground: palette.foreground,
+            accent: palette.accent,
+            muted: palette.muted,
             opacity: cfg.opacity.clamp(0.0, 1.0),
             radius: cfg.corner_radius.max(0) as f32 * scale,
             font: cfg.font.clone(),
@@ -291,6 +292,15 @@ impl Bar {
     /// Shows a transient message (e.g. a config error) in place of the title.
     pub fn notify(&self, text: &str) {
         with_model(self.hwnd, |model| model.notice = Some((text.to_string(), Instant::now() + NOTICE_DURATION)));
+        render(self.hwnd);
+    }
+
+    /// Applies new colours or options (e.g. after the wallpaper changed).
+    pub fn set_style(&self, style: Style) {
+        with_model(self.hwnd, |model| {
+            model.style = style;
+            model.gfx = None;
+        });
         render(self.hwnd);
     }
 

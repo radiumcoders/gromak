@@ -10,9 +10,12 @@
 //! restored after a crash.
 
 use crate::bar::{Bar, BarState, Style, WsItem};
-use crate::config::{self, Bind, Command, Config, FsMode, WsTarget, MOD_ALT, MOD_WIN, WORKSPACES};
+use crate::config::{
+    self, Bind, Command, Config, FsMode, ThemeMode, ThemeSource, WsTarget, MOD_ALT, MOD_WIN, WORKSPACES,
+};
 use crate::keyboard::{self, HookBind};
 use crate::layout::{self, Dir, Dwindle, Rect};
+use crate::theme::{self, Palette};
 use crate::win::{self, Hwnd};
 use std::collections::{HashMap, HashSet};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey, MOD_NOREPEAT};
@@ -91,6 +94,10 @@ pub struct Wm {
     binds: Vec<Bind>,
     active_border: u32,
     inactive_border: u32,
+    /// The current colours (from the wallpaper, accent or config).
+    palette: Palette,
+    /// Fingerprint of the inputs `palette` was derived from.
+    theme_signature: String,
     elevated: bool,
 }
 
@@ -109,6 +116,8 @@ impl Wm {
             binds: Vec::new(),
             active_border: 0,
             inactive_border: 0,
+            palette: theme::palette_from_seed([0x8a, 0xad, 0xf4], false),
+            theme_signature: String::new(),
             elevated: win::self_elevated(),
         };
         wm.load_colors();
@@ -158,10 +167,60 @@ impl Wm {
 
     // ----- configuration -------------------------------------------------
 
+    /// Works out the colours from the `[theme]` settings.
+    fn compute_palette(&self) -> Palette {
+        let light = match self.cfg.theme.mode {
+            ThemeMode::Auto => theme::system_light_mode(),
+            ThemeMode::Dark => false,
+            ThemeMode::Light => true,
+        };
+        let from_accent = || theme::palette_from_seed(theme::windows_accent().unwrap_or([0x8a, 0xad, 0xf4]), light);
+        match self.cfg.theme.source {
+            ThemeSource::Manual => {
+                let color = |s: &str| config::parse_color(s).unwrap_or(0);
+                let (bar, deco) = (&self.cfg.bar, &self.cfg.decoration);
+                Palette {
+                    background: color(&bar.background),
+                    foreground: color(&bar.foreground),
+                    accent: color(&bar.accent),
+                    muted: color(&bar.muted),
+                    border_active: color(&deco.active_border),
+                    border_inactive: color(&deco.inactive_border),
+                }
+            }
+            ThemeSource::Accent => from_accent(),
+            ThemeSource::Wallpaper => {
+                theme::palette_from_pixels(&theme::wallpaper_pixels(), light).unwrap_or_else(from_accent)
+            }
+        }
+    }
+
     fn load_colors(&mut self) {
-        let d = &self.cfg.decoration;
-        self.active_border = config::parse_color(&d.active_border).unwrap_or(win::BORDER_DEFAULT);
-        self.inactive_border = config::parse_color(&d.inactive_border).unwrap_or(win::BORDER_DEFAULT);
+        self.theme_signature = theme::signature();
+        self.palette = self.compute_palette();
+        self.active_border = self.palette.border_active;
+        self.inactive_border = self.palette.border_inactive;
+        info!(
+            "theme ({:?}): accent {}, background {}",
+            self.cfg.theme.source,
+            theme::hex(self.palette.accent),
+            theme::hex(self.palette.background)
+        );
+    }
+
+    /// Re-derives the colours if the wallpaper, accent colour or light/dark
+    /// mode changed since the last time. Cheap when nothing changed.
+    pub fn on_theme_check(&mut self) {
+        if self.cfg.theme.source == ThemeSource::Manual || theme::signature() == self.theme_signature {
+            return;
+        }
+        self.load_colors();
+        self.apply_borders();
+        for m in &self.monitors {
+            if let Some(bar) = &m.bar {
+                bar.set_style(Style::new(&self.cfg.bar, &self.palette, m.info.scale));
+            }
+        }
     }
 
     fn apply_borders(&self) {
@@ -276,7 +335,7 @@ impl Wm {
         self.active_monitor = self.active_monitor.min(self.monitors.len() - 1);
         for i in 0..self.monitors.len() {
             let bar = if self.cfg.bar.enabled {
-                let style = Style::from_config(&self.cfg.bar, self.monitors[i].info.scale);
+                let style = Style::new(&self.cfg.bar, &self.palette, self.monitors[i].info.scale);
                 Bar::new(self.bar_rect(i), style)
             } else {
                 None
