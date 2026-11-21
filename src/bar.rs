@@ -107,7 +107,7 @@ pub struct Style {
     pub full: bool,
     /// Blur what is behind the bar (full style).
     pub blur: bool,
-    pub font: String,
+    pub font: crate::config::FontSource,
     pub font_px: f32,
     pub scale: f32,
     pub show_title: bool,
@@ -127,7 +127,7 @@ impl Style {
             full: cfg.style == config::BarStyle::Full,
             blur: cfg.blur && cfg.style == config::BarStyle::Full,
             radius: cfg.corner_radius.max(0) as f32 * scale,
-            font: cfg.font.clone(),
+            font: cfg.font_source(),
             font_px: cfg.font_size as f32 * scale,
             scale,
             show_title: cfg.show_title,
@@ -569,8 +569,8 @@ unsafe fn create_gfx(f: &Factories, style: &Style) -> windows::core::Result<Gfx>
     Ok(Gfx {
         target,
         brush,
-        regular: crate::gfx::text_format(f, &style.font, 450, style.font_px)?,
-        strong: crate::gfx::text_format(f, &style.font, 650, style.font_px)?,
+        regular: crate::gfx::font_format(f, &style.font, 450, style.font_px)?,
+        strong: crate::gfx::font_format(f, &style.font, 650, style.font_px)?,
         icon: None,
     })
 }

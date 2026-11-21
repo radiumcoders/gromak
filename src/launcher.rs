@@ -100,7 +100,7 @@ pub fn is_open() -> bool {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Style {
     pub palette: Palette,
-    pub font: String,
+    pub font: crate::config::FontSource,
     pub font_px: f32,
     pub scale: f32,
     pub emoji_font: FontSource,
@@ -879,10 +879,10 @@ unsafe fn create_gfx(f: &Factories, style: &Style) -> windows::core::Result<Gfx>
         target,
         brush,
         accent,
-        query: crate::gfx::text_format(f, &style.font, 400, style.font_px * 1.35)?,
-        item: crate::gfx::text_format(f, &style.font, 450, style.font_px * 1.12)?,
-        strong: crate::gfx::text_format(f, &style.font, 600, style.font_px * 1.25)?,
-        hint: crate::gfx::text_format(f, &style.font, 450, style.font_px * 0.95)?,
+        query: crate::gfx::font_format(f, &style.font, 400, style.font_px * 1.35)?,
+        item: crate::gfx::font_format(f, &style.font, 450, style.font_px * 1.12)?,
+        strong: crate::gfx::font_format(f, &style.font, 600, style.font_px * 1.25)?,
+        hint: crate::gfx::font_format(f, &style.font, 450, style.font_px * 0.95)?,
         emoji: emoji_format(f, style)?,
         icons: HashMap::new(),
     })

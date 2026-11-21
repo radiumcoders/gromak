@@ -1189,7 +1189,7 @@ impl Wm {
         let mi = self.active_monitor;
         let style = launcher::Style {
             palette: self.palette,
-            font: self.cfg.bar.font.clone(),
+            font: self.cfg.bar.font_source(),
             font_px: self.cfg.bar.font_size as f32 * self.monitors[mi].info.scale,
             scale: self.monitors[mi].info.scale,
             emoji_font: self.cfg.launcher.emoji_font_source(),

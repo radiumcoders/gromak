@@ -217,19 +217,29 @@ pub enum FontSource {
 
 impl Launcher {
     pub fn emoji_font_source(&self) -> FontSource {
-        let value = self.emoji_font.trim();
-        let lower = value.to_lowercase();
-        if value.contains(['/', '\\']) || lower.ends_with(".ttf") || lower.ends_with(".otf") {
-            let path = PathBuf::from(value);
-            let path = if path.is_absolute() {
-                path
-            } else {
-                config_path().parent().map(|dir| dir.join(&path)).unwrap_or(path)
-            };
-            FontSource::File(path)
-        } else {
-            FontSource::Family(value.to_string())
-        }
+        font_source(&self.emoji_font)
+    }
+}
+
+impl Bar {
+    /// The bar (and launcher) text font: an installed family or a font file.
+    pub fn font_source(&self) -> FontSource {
+        font_source(&self.font)
+    }
+}
+
+/// Interprets a font setting: a `.ttf`/`.otf` path (relative paths are
+/// relative to the config directory) or an installed family name.
+pub fn font_source(value: &str) -> FontSource {
+    let value = value.trim();
+    let lower = value.to_lowercase();
+    if value.contains(['/', '\\']) || lower.ends_with(".ttf") || lower.ends_with(".otf") {
+        let path = PathBuf::from(value);
+        let path =
+            if path.is_absolute() { path } else { config_path().parent().map(|dir| dir.join(&path)).unwrap_or(path) };
+        FontSource::File(path)
+    } else {
+        FontSource::Family(value.to_string())
     }
 }
 

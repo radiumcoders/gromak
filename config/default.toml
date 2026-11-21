@@ -49,6 +49,9 @@ active_border = "#8aadf4"
 inactive_border = "#363a4f"
 
 [bar]
+# `font` (below) is an installed family or a .ttf/.otf file in this folder,
+# e.g. font = "fonts/JetBrainsMono.ttf" after downloading JetBrains Mono from
+# https://github.com/JetBrains/JetBrainsMono/releases (fonts/variable/).
 enabled = true
 # "full": one strip across the top, edge to edge. "islands": floating rounded
 # islands with gaps around them.

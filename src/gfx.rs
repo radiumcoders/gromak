@@ -283,6 +283,10 @@ pub unsafe fn text_format_from_file(
     )?;
     format.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
     format.SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP)?;
+    let ellipsis = f.dwrite.CreateEllipsisTrimmingSign(&format)?;
+    let trimming =
+        DWRITE_TRIMMING { granularity: DWRITE_TRIMMING_GRANULARITY_CHARACTER, delimiter: 0, delimiterCount: 0 };
+    format.SetTrimming(&trimming, &ellipsis)?;
     Ok(format)
 }
 
@@ -297,4 +301,21 @@ pub unsafe fn file_bitmap(f: &Factories, target: &ID2D1DCRenderTarget, path: &st
         .ok()?;
     let frame = decoder.GetFrame(0).ok()?;
     d2d_bitmap(wic, target, &frame.into())
+}
+
+/// A text format for a font setting: an installed family, or a font file
+/// (falling back to Segoe UI if the file cannot be loaded).
+pub unsafe fn font_format(
+    f: &Factories,
+    font: &crate::config::FontSource,
+    weight: i32,
+    px: f32,
+) -> windows::core::Result<IDWriteTextFormat> {
+    match font {
+        crate::config::FontSource::Family(family) => text_format(f, family, weight, px),
+        crate::config::FontSource::File(path) => text_format_from_file(f, path, weight, px).or_else(|e| {
+            warn!("could not load font {}: {e}", path.display());
+            text_format(f, "Segoe UI Variable Text", weight, px)
+        }),
+    }
 }
