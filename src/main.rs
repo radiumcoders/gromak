@@ -9,6 +9,7 @@ mod log;
 mod bar;
 mod calc;
 mod config;
+mod emoji;
 mod fuzzy;
 mod gfx;
 mod keyboard;
