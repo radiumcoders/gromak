@@ -1,0 +1,130 @@
+# tessera — a minimal tiling window manager for Windows
+#
+# This file lives at %USERPROFILE%\.config\tessera\tessera.toml and is created
+# with these defaults on first launch. Press mod+shift+r to reload it.
+# Run `tessera --default-config` to print the pristine defaults again.
+
+[general]
+# Pixels between neighbouring windows.
+gaps_in = 5
+# Pixels between windows and the edge of the screen (and the bar).
+gaps_out = 10
+# The key that "mod" stands for in [binds]: alt, win, ctrl, shift,
+# or a combination such as "ctrl+alt". Note that many win+key shortcuts
+# are reserved by Windows and cannot be registered.
+mod = "alt"
+# The command `exec $terminal` launches.
+terminal = "wt.exe"
+# Hide the Windows taskbar while tessera runs. It is restored on exit.
+hide_taskbar = false
+
+[decoration]
+# Colour the Windows 11 window border of the focused window.
+borders = true
+active_border = "#8aadf4"
+inactive_border = "#363a4f"
+
+[bar]
+enabled = true
+# Height in logical pixels (scaled with the monitor's DPI).
+height = 30
+font = "Segoe UI Variable Text"
+font_size = 13
+background = "#181926"
+foreground = "#cad3f5"
+accent = "#8aadf4"
+muted = "#5b6078"
+show_title = true
+show_clock = true
+clock_24h = true
+
+# Window rules. A rule matches on any combination of `exe`, `class` and
+# `title` (case-insensitive; `title` matches a substring), and can make a
+# window `float`, `ignore` it entirely, or send it to a `workspace` (1-10).
+# Use `tessera --list-windows` to find the exe/class/title of open windows.
+
+[[rules]]
+class = "#32770" # standard Windows dialog boxes
+float = true
+
+[[rules]]
+title = "Picture-in-Picture"
+float = true
+
+# Keybindings: "modifiers+key" = "dispatcher [argument]".
+# Defining a [binds] table replaces all of these defaults.
+#
+# Dispatchers:
+#   exec <command>               run a command ($terminal = general.terminal)
+#   killactive                   close the focused window
+#   togglefloating               float / tile the focused window
+#   fullscreen [0|1]             0 = cover the monitor, 1 = fill the tiling area
+#   togglesplit                  flip the split the focused window sits in
+#   movefocus <l|r|u|d>          focus the neighbour in a direction
+#   movewindow <l|r|u|d>         swap with the neighbour in a direction
+#   resizeactive <l|r|u|d>       move the nearest divider in a direction
+#   cyclenext / cycleprev        focus the next / previous window
+#   workspace <1-10|e+1|e-1>     switch workspace
+#   movetoworkspace <n>          move the focused window there and follow it
+#   movetoworkspacesilent <n>    move the focused window there, stay here
+#   reload                       reload this file
+#   exit                         quit tessera, restoring every window
+[binds]
+"mod+return" = "exec $terminal"
+"mod+q" = "killactive"
+"mod+v" = "togglefloating"
+"mod+f" = "fullscreen 1"
+"mod+shift+f" = "fullscreen 0"
+"mod+t" = "togglesplit"
+"mod+shift+r" = "reload"
+"mod+shift+e" = "exit"
+
+"mod+h" = "movefocus l"
+"mod+j" = "movefocus d"
+"mod+k" = "movefocus u"
+"mod+l" = "movefocus r"
+"mod+left" = "movefocus l"
+"mod+down" = "movefocus d"
+"mod+up" = "movefocus u"
+"mod+right" = "movefocus r"
+
+"mod+shift+h" = "movewindow l"
+"mod+shift+j" = "movewindow d"
+"mod+shift+k" = "movewindow u"
+"mod+shift+l" = "movewindow r"
+"mod+shift+left" = "movewindow l"
+"mod+shift+down" = "movewindow d"
+"mod+shift+up" = "movewindow u"
+"mod+shift+right" = "movewindow r"
+
+"mod+ctrl+h" = "resizeactive l"
+"mod+ctrl+j" = "resizeactive d"
+"mod+ctrl+k" = "resizeactive u"
+"mod+ctrl+l" = "resizeactive r"
+
+"mod+n" = "cyclenext"
+"mod+shift+n" = "cycleprev"
+"mod+period" = "workspace e+1"
+"mod+comma" = "workspace e-1"
+
+"mod+1" = "workspace 1"
+"mod+2" = "workspace 2"
+"mod+3" = "workspace 3"
+"mod+4" = "workspace 4"
+"mod+5" = "workspace 5"
+"mod+6" = "workspace 6"
+"mod+7" = "workspace 7"
+"mod+8" = "workspace 8"
+"mod+9" = "workspace 9"
+"mod+0" = "workspace 10"
+
+"mod+shift+1" = "movetoworkspace 1"
+"mod+shift+2" = "movetoworkspace 2"
+"mod+shift+3" = "movetoworkspace 3"
+"mod+shift+4" = "movetoworkspace 4"
+"mod+shift+5" = "movetoworkspace 5"
+"mod+shift+6" = "movetoworkspace 6"
+"mod+shift+7" = "movetoworkspace 7"
+"mod+shift+8" = "movetoworkspace 8"
+"mod+shift+9" = "movetoworkspace 9"
+"mod+shift+0" = "movetoworkspace 10"
