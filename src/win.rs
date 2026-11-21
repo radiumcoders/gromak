@@ -449,10 +449,6 @@ pub fn taskbars() -> Vec<Hwnd> {
         .collect()
 }
 
-pub fn set_visible_raw(h: Hwnd, visible: bool) {
-    unsafe { ShowWindow(hw(h), if visible { SW_SHOW } else { SW_HIDE }) };
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct MonitorInfo {
     pub handle: isize,
@@ -462,7 +458,6 @@ pub struct MonitorInfo {
     pub work: Rect,
     /// DPI scale factor (1.0 = 96 DPI).
     pub scale: f32,
-    pub primary: bool,
 }
 
 fn monitor_info(handle: isize) -> Option<MonitorInfo> {
@@ -481,7 +476,6 @@ fn monitor_info(handle: isize) -> Option<MonitorInfo> {
             rect: to_rect(mi.rcMonitor),
             work: to_rect(mi.rcWork),
             scale: dx as f32 / 96.0,
-            primary: mi.dwFlags & MONITORINFOF_PRIMARY != 0,
         })
     }
 }
