@@ -30,6 +30,7 @@ ordinary `SetWindowPos` / `ShowWindow` calls.
 | `src/calc.rs` | The launcher's calculator: a small expression evaluator. Pure, unit-tested. |
 | `src/emoji.rs` | The emoji list and search for the launcher's picker. |
 | `src/orc.rs` | The orc.pictures catalog client: fetching, validation, search and the download cache. |
+| `src/power.rs` | Power and session actions for the launcher (lock, sleep, hibernate, sign out, restart, shut down). |
 | `src/gfx.rs` | Shared Direct2D / DirectWrite / WIC plumbing for the bar and the launcher. |
 | `src/theme.rs` | Derives colour palettes from the wallpaper or accent colour, and detects changes. |
 | `src/win.rs` | Thin wrappers over the Win32 / DWM APIs, plus the "is this a normal app window?" heuristic. |

@@ -44,6 +44,8 @@ All notable changes to this project are documented here. The format follows
   next start, or `tessera --restore`.
 - CLI: `--list-windows`, `--check-config`, `--config-path`,
   `--default-config`, `--restore`, `--version`, and `--help`.
+- Launcher power actions: lock, sleep, hibernate, sign out, restart and shut
+  down (destructive ones need a second Enter).
 - Per-monitor workspaces: every monitor has its own workspaces 1–10.
 - `mod`+drag moves windows (drop on a tile, a monitor or a bar workspace
   pill); `mod`+right-drag resizes floating windows or moves tile splits

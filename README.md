@@ -191,6 +191,14 @@ The list is the same as Start's "All apps" (`shell:AppsFolder`), including
 Microsoft Store apps. Apps you launch often move to the top. The launch
 counts are kept in `%LOCALAPPDATA%\tessera\launcher_history.txt`.
 
+#### Power and session
+
+Type `shut`, `restart`/`reboot`, `sleep`, `hibernate`, `lock` or
+`logout` to get **Shut down**, **Restart**, **Sleep**, **Hibernate**,
+**Lock** and **Sign out**. Lock and Sleep happen at once. The others ask for
+a second Enter: the row changes to "Press Enter again to shut down", so a
+stray keypress can't end your session.
+
 #### Calculator
 
 Type maths and the answer appears as the first result. Enter copies it to
