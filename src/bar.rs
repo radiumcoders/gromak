@@ -42,6 +42,34 @@ const CLASS: &str = "tessera_bar";
 const CLOCK_TIMER: usize = 1;
 const WM_MOUSELEAVE: u32 = 0x02A3;
 const NOTICE_DURATION: Duration = Duration::from_secs(5);
+/// Redraw timer while the workspace indicator slides.
+const SLIDE_TIMER: usize = 2;
+/// How long the workspace indicator takes to slide to a new pill.
+const SLIDE_DURATION: Duration = Duration::from_millis(220);
+
+/// The sliding highlight behind the active workspace pill: (x, width).
+#[derive(Clone, Copy, Debug)]
+struct Indicator {
+    from: (f32, f32),
+    to: (f32, f32),
+    start: Instant,
+}
+
+impl Indicator {
+    fn progress(&self) -> f32 {
+        (self.start.elapsed().as_secs_f32() / SLIDE_DURATION.as_secs_f32()).clamp(0.0, 1.0)
+    }
+
+    fn done(&self) -> bool {
+        self.progress() >= 1.0
+    }
+
+    /// Position and width now, with an ease-out-quint curve.
+    fn current(&self) -> (f32, f32) {
+        let t = 1.0 - (1.0 - self.progress()).powi(5);
+        (self.from.0 + (self.to.0 - self.from.0) * t, self.from.1 + (self.to.1 - self.from.1) * t)
+    }
+}
 
 /// What the bar shows for one workspace.
 #[derive(Clone, Debug, PartialEq)]
@@ -126,6 +154,10 @@ struct Model {
     hits: Vec<(f32, f32, usize)>,
     /// Last clock text drawn, to skip redundant redraws.
     clock: String,
+    /// The sliding active-workspace highlight.
+    indicator: Option<Indicator>,
+    /// An animation is running and needs more frames.
+    animating: bool,
 }
 
 thread_local! {
@@ -184,6 +216,8 @@ impl Bar {
             tracking_mouse: false,
             hits: Vec::new(),
             clock: String::new(),
+            indicator: None,
+            animating: false,
         };
         MODELS.with(|m| m.borrow_mut().insert(hwnd as isize, model));
         render(hwnd as isize);
@@ -253,6 +287,10 @@ fn with_model<R>(hwnd: isize, f: impl FnOnce(&mut Model) -> R) -> Option<R> {
 unsafe extern "system" fn bar_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     let key = hwnd as isize;
     match msg {
+        WM_TIMER if wp == SLIDE_TIMER => {
+            render(key);
+            0
+        }
         WM_TIMER => {
             let stale = with_model(key, |m| {
                 let expired = m.notice.as_ref().is_some_and(|(_, until)| Instant::now() >= *until);
@@ -348,6 +386,13 @@ fn render(hwnd: isize) {
             if let Some(surface) = &model.surface {
                 crate::gfx::present(hwnd, surface, model.rect, 255);
             }
+            // Keep drawing frames while the indicator slides (~120 fps timer;
+            // Windows rounds it to the system timer resolution).
+            if model.animating {
+                SetTimer(hwnd as HWND, SLIDE_TIMER, 8, None);
+            } else {
+                KillTimer(hwnd as HWND, SLIDE_TIMER);
+            }
         });
     });
 }
@@ -387,29 +432,43 @@ unsafe fn draw(f: &Factories, model: &mut Model) -> windows::core::Result<()> {
     let gap = (10.0 * s).round();
 
     // ── Workspaces ───────────────────────────────────────────────────────
+    // Square pills; the active one is marked by an indicator that slides
+    // from the previously active pill.
     let pill_h = h - 2.0 * pad;
+    let radius = (pill_h * 0.32).round();
     let mut items = Vec::new();
     let mut x = pad;
     for item in &model.state.workspaces {
         let format = if item.active { &gfx.strong } else { &gfx.regular };
         let Some(number) = label(f, format, &(item.index + 1).to_string(), w, h) else { continue };
-        let pill_w =
-            if item.active { (pill_h * 2.0).max(number.width + pill_h) } else { pill_h.max(number.width + pad) };
+        let pill_w = pill_h.max(number.width + pad);
         items.push((item.clone(), number, x, pill_w));
-        x += pill_w + 2.0 * s;
+        x += pill_w + 3.0 * s;
     }
-    let left_w = (x - 2.0 * s + pad).max(h);
+    let left_w = (x - 3.0 * s + pad).max(h);
     island(0.0, left_w);
     model.hits.clear();
+    model.animating = false;
+    if let Some((_, _, tx, tw)) = items.iter().find(|i| i.0.active) {
+        let target = (*tx, *tw);
+        let shown = model.indicator.map_or(target, |ind| ind.current());
+        match model.indicator {
+            Some(ind) if ind.to == target => {}
+            Some(_) => model.indicator = Some(Indicator { from: shown, to: target, start: Instant::now() }),
+            None => model.indicator = Some(Indicator { from: target, to: target, start: Instant::now() }),
+        }
+        let ind = model.indicator.expect("just set");
+        let (ix, iw) = ind.current();
+        model.animating = !ind.done();
+        let accent = if model.state.focused_monitor { style.accent } else { style.muted };
+        fill(&rounded(ix, pad, ix + iw, pad + pill_h, radius), rgba(accent, 1.0));
+    }
     for (item, number, x, pill_w) in &items {
-        let pill = rounded(*x, pad, x + pill_w, pad + pill_h, pill_h / 2.0);
         let color = if item.active {
-            let accent = if model.state.focused_monitor { style.accent } else { style.muted };
-            fill(&pill, rgba(accent, 1.0));
             rgba(style.background, 1.0)
         } else {
             if model.hover == Some(item.index) {
-                fill(&pill, rgba(style.foreground, 0.12));
+                fill(&rounded(*x, pad, x + pill_w, pad + pill_h, radius), rgba(style.foreground, 0.12));
             }
             if item.occupied {
                 rgba(style.foreground, 0.9)
