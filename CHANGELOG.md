@@ -82,3 +82,5 @@ All notable changes to this project are documented here. The format follows
   `mod = "win"` when Win was released before the mouse button. With
   `start_menu = "never"`, every Win release is now masked, and Ctrl+Esc is
   blocked too.
+- gromak crashed on exit (after its cleanup had run) because graphics
+  objects were released during process teardown.

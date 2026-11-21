@@ -157,6 +157,12 @@ fn with_state<R>(f: impl FnOnce(&mut Popup) -> R) -> Option<R> {
     STATE.with(|s| s.try_borrow_mut().ok().and_then(|mut s| s.as_mut().map(f)))
 }
 
+/// Releases the popup's drawing state (see [`crate::gfx::shutdown`]).
+pub fn shutdown() {
+    let state = STATE.with(|s| s.borrow_mut().take());
+    drop(state);
+}
+
 /// Registers the class and creates the (hidden) popup window.
 pub fn init() {
     let class = wide(CLASS);

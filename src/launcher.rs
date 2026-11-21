@@ -329,6 +329,13 @@ fn save_history(history: &HashMap<String, u32>) {
 
 // ----- public API -----------------------------------------------------------
 
+/// Releases the launcher's icons, posters and drawing state (see
+/// [`crate::gfx::shutdown`]).
+pub fn shutdown() {
+    let state = STATE.with(|s| s.borrow_mut().take());
+    drop(state);
+}
+
 /// Registers the window class, creates the (hidden) window and starts
 /// indexing apps in the background.
 pub fn init() {

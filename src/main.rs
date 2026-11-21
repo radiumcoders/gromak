@@ -156,6 +156,14 @@ fn main() {
     for hook in hooks {
         unsafe { UnhookWinEvent(hook) };
     }
+    // Release COM objects now, while the DLLs behind them are still loaded;
+    // thread-local destructors would run them during process teardown.
+    drop(wm);
+    launcher::shutdown();
+    popup::shutdown();
+    bar::shutdown();
+    gfx::shutdown();
+    info!("exited cleanly");
 }
 
 fn run_cli(args: &[String]) -> i32 {

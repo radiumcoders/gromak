@@ -173,6 +173,11 @@ thread_local! {
     static MODELS: RefCell<HashMap<isize, Model>> = RefCell::new(HashMap::new());
 }
 
+/// Releases every bar's drawing state (see [`crate::gfx::shutdown`]).
+pub fn shutdown() {
+    MODELS.with(|m| m.borrow_mut().clear());
+}
+
 /// One-time setup: registers the window class. Call after [`crate::gfx::init`].
 pub fn init() {
     unsafe {

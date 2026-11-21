@@ -65,6 +65,13 @@ pub fn init() {
     }
 }
 
+/// Releases the factories. Call last, after everything drawn with them is
+/// gone: left to the thread-local destructor, they would be released during
+/// process teardown, after the DLLs behind them have been unloaded.
+pub fn shutdown() {
+    FACTORIES.with(|f| f.borrow_mut().take());
+}
+
 /// Runs `f` with the factories, if they were initialised.
 pub fn with_factories<R>(f: impl FnOnce(&Factories) -> R) -> Option<R> {
     FACTORIES.with(|cell| cell.borrow().as_ref().map(f))
