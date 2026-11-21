@@ -8,6 +8,7 @@
 mod log;
 mod bar;
 mod config;
+mod gfx;
 mod keyboard;
 mod layout;
 mod mouse;
@@ -105,6 +106,7 @@ fn main() {
         }
     };
 
+    gfx::init();
     bar::init();
     let ctrl = create_ctrl_window();
     if ctrl == 0 {
