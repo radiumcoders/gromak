@@ -44,6 +44,8 @@ All notable changes to this project are documented here. The format follows
   next start, or `gromak --restore`.
 - CLI: `--list-windows`, `--check-config`, `--config-path`,
   `--default-config`, `--restore`, `--version`, and `--help`.
+- Full-width bar style with a subtle blurred (acrylic) backdrop, now the
+  default; the floating islands remain as `style = "islands"`.
 - Smooth animations: windows glide to their new place (ease-out quint),
   workspaces slide in, the active workspace indicator slides between square
   pills, and Windows' own show/hide scale-and-fade is turned off for managed

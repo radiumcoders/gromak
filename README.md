@@ -37,9 +37,9 @@ and nothing else.
   most-used-first ranking. If nothing matches, Enter runs what you typed.
   It also has a calculator, an emoji picker (`:`) and an
   [orc.pictures](https://orc.pictures) GIF picker (`gif `).
-- **Floating island bar.** Translucent, rounded islands for workspaces, the
-  focused window's icon and title, and the date and time. The space between
-  them is see-through and click-through.
+- **Blurred bar.** One slim strip along the top of each monitor with a subtle
+  frosted-glass blur: workspaces, the focused window's icon and title, and the
+  date and time. Prefer floating islands? Set `style = "islands"`.
 - **Themed by your wallpaper.** The bar and the focused window's border take
   their colours from your desktop wallpaper and follow it when it changes,
   in dark or light mode. You can also use your Windows accent colour, or
@@ -139,8 +139,10 @@ inactive_border = "#363a4f"
 
 [bar]
 enabled = true
+style = "full"          # or "islands"
+blur = true             # frosted-glass backdrop (full style)
 height = 26
-opacity = 0.9        # island opacity, 0.0 - 1.0
+opacity = 0.55       # background opacity, 0.0 - 1.0
 corner_radius = 10
 font = "Segoe UI Variable Text"
 font_size = 12
