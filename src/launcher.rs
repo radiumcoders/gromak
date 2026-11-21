@@ -27,6 +27,7 @@ use crate::emoji::{self, Emoji};
 use crate::fuzzy;
 use crate::gfx::{hbitmap_bitmap, label, rgba, rounded, Factories, Surface};
 use crate::layout::Rect;
+use crate::orc;
 use crate::theme::Palette;
 use crate::win::{self, wide};
 use std::cell::RefCell;
@@ -120,6 +121,8 @@ enum Row {
     /// A calculation and its formatted result.
     Calc(String),
     Emoji(&'static Emoji, fuzzy::Match),
+    /// An orc.pictures GIF (index into `Launcher::gifs`).
+    Gif(usize, fuzzy::Match),
     App(usize, fuzzy::Match),
     Run(String),
     Message(&'static str),
@@ -135,6 +138,10 @@ struct Launcher {
     surface_size: (i32, i32),
     gfx: Option<Gfx>,
     apps: Vec<App>,
+    /// orc.pictures catalog snapshot, used in GIF mode.
+    gifs: Vec<orc::Gif>,
+    /// The query starts with "gif ": results are GIFs (taller rows).
+    gif_mode: bool,
     history: HashMap<String, u32>,
     query: String,
     pending_surrogate: Option<u16>,
@@ -171,6 +178,8 @@ enum Action {
     Copy(String),
     /// Type text into the previously focused window (via the clipboard).
     Type(String),
+    /// Download a GIF and paste it (as a file) into the previous window.
+    PasteGif(orc::Gif),
 }
 
 // ----- app index ------------------------------------------------------------
@@ -253,6 +262,15 @@ fn refresh_index() {
     }
 }
 
+/// Asks the launcher to refresh its results (new catalog data or a
+/// downloaded thumbnail); safe to call from any thread.
+fn notify_launcher() {
+    let hwnd = HWND_LAUNCHER.load(Ordering::Relaxed);
+    if hwnd != 0 {
+        unsafe { PostMessageW(hwnd as HWND, WM_APPS_INDEXED, 0, 0) };
+    }
+}
+
 fn index_snapshot() -> (Vec<App>, bool) {
     let guard = INDEX.lock().unwrap_or_else(|e| e.into_inner());
     match guard.as_ref() {
@@ -330,6 +348,8 @@ pub fn init() {
             surface_size: (0, 0),
             gfx: None,
             apps: Vec::new(),
+            gifs: Vec::new(),
+            gif_mode: false,
             history: load_history(),
             query: String::new(),
             pending_surrogate: None,
@@ -436,6 +456,19 @@ fn run(action: Action) {
                 info!("launcher: copied {text}");
             }
         }
+        Action::PasteGif(gif) => {
+            close(true);
+            std::thread::spawn(move || match orc::fetch_gif(&gif) {
+                Ok(path) => {
+                    if win::set_clipboard_files(&[path]) {
+                        std::thread::sleep(Duration::from_millis(80));
+                        win::send_paste();
+                        info!("launcher: pasted orc.pictures GIF {}", gif.slug);
+                    }
+                }
+                Err(e) => warn!("launcher: could not get GIF {}: {e}", gif.slug),
+            });
+        }
         Action::Type(text) => {
             close(true);
             // Paste through the clipboard, then put back what was there.
@@ -463,6 +496,24 @@ impl Launcher {
         self.selected = 0;
         self.scroll = 0;
         let query = self.query.trim();
+        // "gif ..." searches orc.pictures.
+        let lower = query.to_lowercase();
+        self.gif_mode = lower.starts_with("gif ") || lower == "gif";
+        if self.gif_mode {
+            let search = query.get(3..).unwrap_or("").trim();
+            self.gifs = orc::catalog();
+            orc::refresh_catalog(notify_launcher);
+            self.rows =
+                orc::search(&self.gifs, search).into_iter().take(MAX_RESULTS).map(|(i, m)| Row::Gif(i, m)).collect();
+            if self.rows.is_empty() {
+                self.rows.push(Row::Message(if self.gifs.is_empty() {
+                    "Loading orc.pictures…"
+                } else {
+                    "No GIFs found"
+                }));
+            }
+            return;
+        }
         let calculation = calc::evaluate_query(query).map(|v| Row::Calc(calc::format(v)));
         // ":..." is the emoji picker.
         if let Some(rest) = query.strip_prefix(':') {
@@ -522,6 +573,7 @@ impl Launcher {
             Some(Row::Run(cmd)) => Action::Launch { app: None, command: Some(cmd.clone()) },
             Some(Row::Calc(value)) => Action::Copy(value.clone()),
             Some(Row::Emoji(e, _)) => Action::Type(e.glyph.to_string()),
+            Some(Row::Gif(i, _)) => Action::PasteGif(self.gifs[*i].clone()),
             _ => Action::Nothing,
         }
     }
@@ -579,7 +631,13 @@ impl Launcher {
         let shift = unsafe { GetKeyState(VK_SHIFT as i32) } < 0;
         let step = match vk {
             VK_ESCAPE => return Action::Close { restore_focus: true },
-            VK_RETURN => return self.activate(self.selected),
+            VK_RETURN => {
+                // Shift+Enter on a GIF copies its link instead of pasting it.
+                if let (true, Some(Row::Gif(i, _))) = (shift, self.rows.get(self.selected)) {
+                    return Action::Copy(orc::gif_url(&self.gifs[*i]));
+                }
+                return self.activate(self.selected);
+            }
             VK_DOWN => 1,
             VK_UP => -1,
             VK_TAB => {
@@ -611,7 +669,8 @@ impl Launcher {
     fn metrics(&self) -> (f32, f32, f32, f32) {
         let s = self.style.as_ref().map_or(1.0, |st| st.scale);
         let width = (660.0 * s).min(self.area.w as f32 - 40.0 * s).max(200.0);
-        (width.round(), (60.0 * s).round(), (46.0 * s).round(), (10.0 * s).round())
+        let row_h = if self.gif_mode { 64.0 } else { 46.0 };
+        (width.round(), (60.0 * s).round(), (row_h * s).round(), (10.0 * s).round())
     }
 
     fn visible_rows(&self) -> usize {
@@ -892,7 +951,7 @@ impl Launcher {
         let query_origin = Vector2 { X: text_x, Y: m + pad };
         if self.query.is_empty() {
             if let Some(placeholder) =
-                label(f, &gfx.query, "Search apps  ·  2+2 to calculate  ·  : for emoji", text_w, search_h)
+                label(f, &gfx.query, "Search apps  ·  2+2  ·  :emoji  ·  gif orc", text_w, search_h)
             {
                 brush.SetColor(&rgba(p.foreground, 0.32));
                 target.DrawTextLayout(query_origin, &placeholder.layout, brush, D2D1_DRAW_TEXT_OPTIONS_NONE);
@@ -1025,6 +1084,84 @@ impl Launcher {
                         gfx.target.DrawTextLayout(
                             Vector2 { X: name_x, Y: y0 },
                             &name.layout,
+                            &gfx.brush,
+                            D2D1_DRAW_TEXT_OPTIONS_NONE,
+                        );
+                    }
+                }
+                Row::Gif(i, matched) => {
+                    let gif = &self.gifs[*i];
+                    let thumb = (row_h - 12.0 * s).round();
+                    let ty = y0 + (row_h - thumb) / 2.0;
+                    let key = format!("orc:{}:{}", gif.slug, gif.revision);
+                    if !gfx.icons.contains_key(&key) {
+                        let poster = orc::poster_path(gif);
+                        if poster.exists() {
+                            let bitmap = crate::gfx::file_bitmap(f, &gfx.target, &poster);
+                            gfx.icons.insert(key.clone(), bitmap);
+                        } else {
+                            orc::ensure_poster(gif, notify_launcher);
+                        }
+                    }
+                    match gfx.icons.get(&key) {
+                        Some(Some(bitmap)) => {
+                            let dest = D2D_RECT_F { left: icon_x, top: ty, right: icon_x + thumb, bottom: ty + thumb };
+                            gfx.target.DrawBitmap(
+                                bitmap,
+                                Some(&dest),
+                                1.0,
+                                D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                                None,
+                            );
+                        }
+                        _ => {
+                            gfx.brush.SetColor(&rgba(p.foreground, 0.06));
+                            gfx.target.FillRoundedRectangle(
+                                &rounded(icon_x, ty, icon_x + thumb, ty + thumb, 6.0 * s),
+                                &gfx.brush,
+                            );
+                        }
+                    }
+                    let text_x = icon_x + thumb + 14.0 * s;
+                    let hint = selected
+                        .then(|| label(f, &gfx.hint, "Enter paste  ·  Shift+Enter link", name_w, row_h))
+                        .flatten();
+                    let hint_w = hint.as_ref().map_or(0.0, |h| h.width + 16.0 * s);
+                    let mut x = text_x;
+                    if let Some(title) = label(f, &gfx.item, &gif.title, right - text_x - hint_w, row_h) {
+                        let accent_effect: IUnknown = gfx.accent.cast()?;
+                        for start in utf16_offsets(&gif.title, &matched.positions) {
+                            let range = DWRITE_TEXT_RANGE { startPosition: start, length: 1 };
+                            title.layout.SetFontWeight(DWRITE_FONT_WEIGHT(600), range)?;
+                            title.layout.SetDrawingEffect(&accent_effect, range)?;
+                        }
+                        gfx.brush.SetColor(&rgba(p.foreground, text_alpha));
+                        gfx.target.DrawTextLayout(
+                            Vector2 { X: x, Y: y0 },
+                            &title.layout,
+                            &gfx.brush,
+                            D2D1_DRAW_TEXT_OPTIONS_NONE,
+                        );
+                        x += title.width + 12.0 * s;
+                    }
+                    let tags = gif.tags.iter().take(4).cloned().collect::<Vec<_>>().join(" · ");
+                    let tags_w = right - x - hint_w;
+                    if !tags.is_empty() && tags_w > 40.0 * s {
+                        if let Some(tags) = label(f, &gfx.hint, &tags, tags_w, row_h) {
+                            gfx.brush.SetColor(&rgba(p.foreground, 0.4));
+                            gfx.target.DrawTextLayout(
+                                Vector2 { X: x, Y: y0 },
+                                &tags.layout,
+                                &gfx.brush,
+                                D2D1_DRAW_TEXT_OPTIONS_NONE,
+                            );
+                        }
+                    }
+                    if let Some(hint) = hint {
+                        gfx.brush.SetColor(&rgba(p.foreground, 0.42));
+                        gfx.target.DrawTextLayout(
+                            Vector2 { X: right - hint.width, Y: y0 },
+                            &hint.layout,
                             &gfx.brush,
                             D2D1_DRAW_TEXT_OPTIONS_NONE,
                         );

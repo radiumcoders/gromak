@@ -623,3 +623,45 @@ pub fn send_paste() {
         SendInput(inputs.len() as u32, inputs.as_ptr(), size_of::<INPUT>() as i32);
     }
 }
+
+/// Puts files on the clipboard the way Explorer copies them (`CF_HDROP`),
+/// so pasting into chat apps or upload fields sends the file itself.
+pub fn set_clipboard_files(paths: &[std::path::PathBuf]) -> bool {
+    use windows_sys::Win32::Foundation::GlobalFree;
+    use windows_sys::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
+    use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE, GMEM_ZEROINIT};
+    use windows_sys::Win32::UI::Shell::DROPFILES;
+    const CF_HDROP: u32 = 15;
+    // DROPFILES header, then NUL-separated wide paths, then a final NUL.
+    let mut list: Vec<u16> = Vec::new();
+    for path in paths {
+        list.extend(path.to_string_lossy().encode_utf16());
+        list.push(0);
+    }
+    list.push(0);
+    let header = size_of::<DROPFILES>();
+    unsafe {
+        if OpenClipboard(null_mut()) == 0 {
+            return false;
+        }
+        EmptyClipboard();
+        let memory = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, header + list.len() * 2);
+        let mut ok = false;
+        if !memory.is_null() {
+            let base = GlobalLock(memory) as *mut u8;
+            if !base.is_null() {
+                let drop_files = base as *mut DROPFILES;
+                (*drop_files).pFiles = header as u32;
+                (*drop_files).fWide = 1;
+                std::ptr::copy_nonoverlapping(list.as_ptr(), base.add(header) as *mut u16, list.len());
+                GlobalUnlock(memory);
+                ok = !SetClipboardData(CF_HDROP, memory).is_null();
+            }
+            if !ok {
+                GlobalFree(memory);
+            }
+        }
+        CloseClipboard();
+        ok
+    }
+}

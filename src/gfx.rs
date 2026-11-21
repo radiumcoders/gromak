@@ -285,3 +285,16 @@ pub unsafe fn text_format_from_file(
     format.SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP)?;
     Ok(format)
 }
+
+/// Decodes an image file (PNG, JPEG, …) into a Direct2D bitmap.
+pub unsafe fn file_bitmap(f: &Factories, target: &ID2D1DCRenderTarget, path: &std::path::Path) -> Option<ID2D1Bitmap> {
+    use windows::Win32::Foundation::GENERIC_READ;
+    use windows::Win32::Graphics::Imaging::WICDecodeMetadataCacheOnDemand;
+    let wic = f.wic.as_ref()?;
+    let name = wide(&path.to_string_lossy());
+    let decoder = wic
+        .CreateDecoderFromFilename(PCWSTR(name.as_ptr()), None, GENERIC_READ, WICDecodeMetadataCacheOnDemand)
+        .ok()?;
+    let frame = decoder.GetFrame(0).ok()?;
+    d2d_bitmap(wic, target, &frame.into())
+}
