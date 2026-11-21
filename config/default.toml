@@ -22,7 +22,7 @@ hide_taskbar = false
 focus_follows_mouse = false
 # What a lone tap of the Win key does: "tap" opens Start (Windows' default),
 # "double_tap" does nothing unless you tap twice quickly, "never" never opens
-# it. Win+key combinations are not affected.
+# it (Ctrl+Esc is blocked too). Win+key combinations are not affected.
 start_menu = "tap"
 # Hold mod and drag with the left mouse button to move a window (drop it on
 # another tile to swap, on another monitor to move it there, or on a bar

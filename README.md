@@ -143,7 +143,7 @@ mod = "alt"
 terminal = "wt.exe"
 hide_taskbar = false
 focus_follows_mouse = false
-start_menu = "tap"       # or "double_tap" / "never": what a lone Win tap does
+start_menu = "tap"       # or "double_tap" / "never" (also blocks Ctrl+Esc)
 mouse_drag = true
 
 [theme]

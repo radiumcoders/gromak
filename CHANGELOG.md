@@ -78,3 +78,7 @@ All notable changes to this project are documented here. The format follows
   thumbnails were re-downloaded continuously.
 - The fuzzy matcher missed valid matches; the calculator could overflow its
   stack on huge input; wheel and keyboard hooks could keep stale state.
+- The Start menu could open after `mod`+drag or `mod`+scroll with
+  `mod = "win"` when Win was released before the mouse button. With
+  `start_menu = "never"`, every Win release is now masked, and Ctrl+Esc is
+  blocked too.

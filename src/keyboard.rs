@@ -20,8 +20,8 @@ use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::SystemInformation::GetTickCount64;
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_RCONTROL, VK_RMENU, VK_RSHIFT,
-    VK_RWIN, VK_SHIFT,
+    GetAsyncKeyState, VK_CONTROL, VK_ESCAPE, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_RCONTROL, VK_RMENU,
+    VK_RSHIFT, VK_RWIN, VK_SHIFT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetMessageW, PostThreadMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HC_ACTION,
@@ -68,6 +68,9 @@ static WIN_DOWN: AtomicBool = AtomicBool::new(false);
 /// Something else was pressed (or the mouse used) while Win was down, so the
 /// release is part of a combination, not a lone tap.
 static WIN_COMBO: AtomicBool = AtomicBool::new(false);
+/// The mouse was used with Win (Win+drag, Win+wheel). The shell never sees
+/// those swallowed clicks, so to it the release looks like a lone tap.
+static WIN_MOUSE_COMBO: AtomicBool = AtomicBool::new(false);
 /// When the last suppressed lone tap happened (GetTickCount64).
 static LAST_TAP: AtomicU64 = AtomicU64::new(0);
 
@@ -80,7 +83,28 @@ pub fn set_start_menu(mode: StartMenu) {
 pub fn note_win_combo() {
     if WIN_DOWN.load(Ordering::Relaxed) {
         WIN_COMBO.store(true, Ordering::Relaxed);
+        WIN_MOUSE_COMBO.store(true, Ordering::Relaxed);
     }
+}
+
+/// On a Win release: should it be replayed behind a mask key so that the
+/// shell does not open Start?
+fn mask_win_release() -> bool {
+    // A mouse combination: the shell saw Win go down and up with nothing in
+    // between (the clicks or wheel were swallowed). The mouse hook masks when
+    // the button is released, but Win may be let go first, or both at once.
+    let mouse = WIN_MOUSE_COMBO.swap(false, Ordering::Relaxed);
+    // "never": mask every release, combination or not. Masking is harmless
+    // for real combinations (the shell acts on the other key's press) and it
+    // closes every race with the asynchronous mask key.
+    START_MENU.load(Ordering::Relaxed) == StartMenu::Never as u8 || mouse || suppress_lone_win_tap()
+}
+
+/// Ctrl+Esc opens Start too; with "never" it is swallowed.
+fn is_start_shortcut(vk: u32, down: bool) -> bool {
+    down && vk == VK_ESCAPE as u32
+        && START_MENU.load(Ordering::Relaxed) == StartMenu::Never as u8
+        && current_mods() == MOD_CONTROL
 }
 
 fn is_win_key(vk: u32) -> bool {
@@ -198,10 +222,11 @@ unsafe extern "system" fn hook_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESUL
             if down {
                 if !WIN_DOWN.swap(true, Ordering::Relaxed) {
                     WIN_COMBO.store(false, Ordering::Relaxed);
+                    WIN_MOUSE_COMBO.store(false, Ordering::Relaxed);
                 }
             } else {
                 WIN_DOWN.store(false, Ordering::Relaxed);
-                if suppress_lone_win_tap() {
+                if mask_win_release() {
                     // Swallow this release; the hook thread replays it behind
                     // an unassigned key so the shell does not see a lone tap.
                     PostThreadMessageW(THREAD_ID.load(Ordering::Relaxed), WM_SUPPRESS_WIN, vk as usize, 0);
@@ -210,6 +235,11 @@ unsafe extern "system" fn hook_proc(code: i32, wp: WPARAM, lp: LPARAM) -> LRESUL
             }
         } else if down && WIN_DOWN.load(Ordering::Relaxed) {
             WIN_COMBO.store(true, Ordering::Relaxed);
+        }
+        if is_start_shortcut(vk, down) {
+            // Swallow its release too.
+            HELD[vk as usize].store(true, Ordering::Relaxed);
+            return 1;
         }
         if vk < 256 && !is_modifier(vk) {
             let held = &HELD[vk as usize];
