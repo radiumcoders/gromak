@@ -229,7 +229,7 @@ impl Config {
 
     /// Parses every keybinding. Returns the valid ones plus an error
     /// message for each invalid one.
-    pub fn compile_binds(&self) -> (Vec<(Hotkey, Command)>, Vec<String>) {
+    pub fn compile_binds(&self) -> (Vec<Bind>, Vec<String>) {
         let mut ok = Vec::new();
         let mut errors = Vec::new();
         let main_mod = match self.main_mod() {
@@ -238,7 +238,7 @@ impl Config {
         };
         for (keys, action) in &self.binds {
             match (parse_hotkey(keys, main_mod), parse_command(action)) {
-                (Ok(hk), Ok(cmd)) => ok.push((hk, cmd)),
+                (Ok(hotkey), Ok(command)) => ok.push(Bind { keys: keys.clone(), hotkey, command }),
                 (Err(e), _) | (_, Err(e)) => errors.push(format!("binds.\"{keys}\": {e}")),
             }
         }
@@ -255,6 +255,15 @@ pub fn parse_color(s: &str) -> Option<u32> {
     let v = u32::from_str_radix(hex, 16).ok()?;
     let (r, g, b) = ((v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff);
     Some(r | (g << 8) | (b << 16))
+}
+
+/// A parsed keybinding.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Bind {
+    /// The key combination as written in the config, for messages.
+    pub keys: String,
+    pub hotkey: Hotkey,
+    pub command: Command,
 }
 
 /// A global hotkey: Win32 `MOD_*` flags plus a virtual-key code.
