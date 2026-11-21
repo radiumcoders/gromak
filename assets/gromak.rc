@@ -1,0 +1,31 @@
+// Icon and version information for gromak.exe (compiled by build.rs).
+// GROMAK_VERSION_NUM and GROMAK_VERSION_STR come from Cargo.toml.
+#include <winver.h>
+
+1 ICON "gromak.ico"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     GROMAK_VERSION_NUM
+PRODUCTVERSION  GROMAK_VERSION_NUM
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "gromak"
+            VALUE "FileDescription",  "gromak tiling window manager"
+            VALUE "FileVersion",      GROMAK_VERSION_STR
+            VALUE "InternalName",     "gromak"
+            VALUE "LegalCopyright",   "MIT License"
+            VALUE "OriginalFilename", "gromak.exe"
+            VALUE "ProductName",      "gromak"
+            VALUE "ProductVersion",   GROMAK_VERSION_STR
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
