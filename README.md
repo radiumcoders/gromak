@@ -97,6 +97,8 @@ moving focus right.
 | `mod+Shift+1` … `mod+Shift+0` | Move window to workspace 1–10 and follow it |
 | `mod+.` / `mod+,` | Next / previous workspace |
 | `mod+N` / `mod+Shift+N` | Focus next / previous window |
+| `mod`+scroll | Focus next / previous window |
+| `mod+Shift`+scroll | Next / previous workspace |
 | `mod+V` | Toggle floating |
 | `mod+F` | Fullscreen within the tiling area (keeps gaps and bar) |
 | `mod+Shift+F` | True fullscreen |
@@ -176,7 +178,39 @@ finds Terminal, and the matched letters are highlighted.
 
 The list is the same as Start's "All apps" (`shell:AppsFolder`), including
 Microsoft Store apps. Apps you launch often move to the top. The launch
-counts are kept in `%LOCALAPPDATA%	esseraauncher_history.txt`.
+counts are kept in `%LOCALAPPDATA%\tessera\launcher_history.txt`.
+
+#### Calculator
+
+Type maths and the answer appears as the first result. Enter copies it to
+the clipboard. Start with `=` to use only the calculator.
+
+```
+2+3*4            → 14
+15% of 80        → 12
+sqrt(2)^2 + 5!   → 122
+(1,000 - 25) / 3 → 325
+```
+
+It supports `+ - * / ^`, parentheses, percentages, `mod`, factorials,
+implicit multiplication (`2pi`), `pi`, `tau` and `e`, and the functions
+`sqrt cbrt abs exp ln log log2 sin cos tan asin acos atan floor ceil round`.
+
+#### Emoji picker
+
+Type `:` followed by a name, such as `:fire` or `:thumbs`, to search
+emoji. Enter types the emoji into the window you were using, then restores
+your clipboard. To use a different emoji style, point `[launcher]
+emoji_font` at an installed font or a `.ttf` file. For example, Twemoji, the
+style used by Discord:
+
+```toml
+[launcher]
+emoji_font = "fonts/Twemoji.Mozilla.ttf"   # relative to the config folder
+```
+
+Download `Twemoji.Mozilla.ttf` from
+[mozilla/twemoji-colr](https://github.com/mozilla/twemoji-colr/releases).
 
 ### Theme
 
@@ -246,6 +280,16 @@ tessera --help
 
 The log is written to `%LOCALAPPDATA%\tessera\tessera.log`. When you start
 tessera from a terminal, the log also streams there.
+
+## Compatibility with other apps
+
+tessera only intercepts the exact key combinations in your `[binds]`, plus
+the mouse wheel while a bound modifier is held. Every other shortcut reaches
+your apps unchanged. With `mod = "win"`, that includes Ctrl/Alt/Shift
+shortcuts, Ctrl+scroll zoom and Shift+scroll. Windows' own Win shortcuts keep
+working unless you bind the same combination. To keep one, such as Win+V for
+clipboard history or Win+N for notifications, remove or rebind that line in
+`[binds]`.
 
 ## Known limitations
 

@@ -27,6 +27,8 @@ ordinary `SetWindowPos` / `ShowWindow` calls.
 | `src/mouse.rs` | The low-level mouse hook thread that reports pointer movement for focus follows mouse. |
 | `src/launcher.rs` | The app launcher: app index, search panel window and launching. |
 | `src/fuzzy.rs` | Fuzzy matching and scoring for the launcher. Pure, unit-tested. |
+| `src/calc.rs` | The launcher's calculator: a small expression evaluator. Pure, unit-tested. |
+| `src/emoji.rs` | The emoji list and search for the launcher's picker. |
 | `src/gfx.rs` | Shared Direct2D / DirectWrite / WIC plumbing for the bar and the launcher. |
 | `src/theme.rs` | Derives colour palettes from the wallpaper or accent colour, and detects changes. |
 | `src/win.rs` | Thin wrappers over the Win32 / DWM APIs, plus the "is this a normal app window?" heuristic. |
@@ -128,7 +130,12 @@ or the Start menu.
 
 ## Focus follows mouse
 
-`src/mouse.rs` installs a `WH_MOUSE_LL` hook on its own thread. The hook does
+`src/mouse.rs` installs a `WH_MOUSE_LL` hook on its own thread. It also handles wheel bindings: a
+wheel event with a bound modifier combination held is swallowed. Small
+precision-touchpad deltas are accumulated into whole notches, and the
+Win/Alt release is masked like a keyboard binding.
+
+For pointer movement, The hook does
 no work beyond noting that the pointer moved. An atomic flag coalesces
 movement into at most one queued `WM_APP_MOUSE` message, so a 1000 Hz mouse
 costs the window manager one cheap check per message-loop turn, not a thousand.

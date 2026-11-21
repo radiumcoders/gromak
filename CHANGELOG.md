@@ -26,6 +26,11 @@ All notable changes to this project are documented here. The format follows
 - `hide_taskbar` keeps the Windows taskbar hidden, even when Explorer re-shows it.
 - App launcher (`launcher` dispatcher, `mod+Space`): fuzzy search over all
   installed apps with icons, usage ranking and a run-a-command fallback.
+- Launcher calculator (type maths; Enter copies the result) and emoji picker
+  (`:` prefix; Enter types the emoji), with a configurable emoji font
+  (`[launcher] emoji_font`, including .ttf files such as Twemoji).
+- Mouse-wheel bindings (`wheelup` / `wheeldown`): `mod`+scroll cycles windows,
+  `mod+Shift`+scroll switches workspaces.
 - Focus follows mouse (`general.focus_follows_mouse`), with the pointer
   following keyboard focus changes.
 - Wallpaper-driven theming: colours are derived from the desktop wallpaper
