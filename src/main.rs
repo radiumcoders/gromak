@@ -10,6 +10,7 @@ mod bar;
 mod config;
 mod keyboard;
 mod layout;
+mod theme;
 mod win;
 mod wm;
 
