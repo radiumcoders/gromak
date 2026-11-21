@@ -53,7 +53,25 @@ window, and nothing else.
 - **Multi-monitor and per-monitor DPI aware.** Gaps and the bar scale with each display.
 - **Safe.** Hidden windows are tracked on disk and restored on exit, logoff,
   crash recovery, or `gromak --restore`. No DLL injection and no admin rights required.
-- **Small.** A single executable under 1 MB with no runtime dependencies.
+- **Small.** A single executable of about 1.3 MB with no runtime dependencies.
+
+## Resource usage
+
+Measured on Windows 11 with two 1080p monitors, a release build, and the
+launcher used a few times:
+
+| | |
+|---|---|
+| RAM (working set) | ~100 MB |
+| RAM (private) | ~85 MB |
+| CPU | ~0% when idle; it only wakes on window events, input and animations |
+| Executable | ~1.3 MB |
+
+Most of that memory isn't gromak itself. The bar, launcher and popups are
+drawn on the GPU with Direct2D, which loads your graphics driver (often 40 MB
+or more). Listing your apps and their icons in the launcher loads the
+Windows shell libraries. App icons and GIF previews are cached after first
+use, so the launcher opens instantly.
 
 ## Requirements
 

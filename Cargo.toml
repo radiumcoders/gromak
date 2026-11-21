@@ -5,6 +5,7 @@ edition = "2021"
 description = "A minimal, keyboard-driven tiling window manager for Windows, inspired by Hyprland."
 license = "MIT"
 readme = "README.md"
+repository = "https://github.com/radiumcoders/gromak"
 keywords = ["window-manager", "tiling", "windows", "win32", "hyprland"]
 categories = ["gui"]
 
