@@ -539,3 +539,15 @@ pub fn mouse_button_down() -> bool {
 pub fn set_cursor_pos(x: i32, y: i32) {
     unsafe { SetCursorPos(x, y) };
 }
+
+/// Runs a command line the way the Run dialog would, without a console
+/// window. `start` resolves App Paths and execution aliases (wt.exe, …).
+pub fn run_command(command: &str) -> std::io::Result<()> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    std::process::Command::new("cmd.exe")
+        .raw_arg(format!("/C start \"\" {command}"))
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .map(|_| ())
+}

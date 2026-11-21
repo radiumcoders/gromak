@@ -76,6 +76,7 @@ float = true
 #
 # Dispatchers:
 #   exec <command>               run a command ($terminal = general.terminal)
+#   launcher                     open the app launcher (type to search, Enter to open)
 #   killactive                   close the focused window
 #   togglefloating               float / tile the focused window
 #   fullscreen [0|1]             0 = cover the monitor, 1 = fill the tiling area
@@ -91,6 +92,7 @@ float = true
 #   exit                         quit tessera, restoring every window
 [binds]
 "mod+return" = "exec $terminal"
+"mod+space" = "launcher"
 "mod+q" = "killactive"
 "mod+v" = "togglefloating"
 "mod+f" = "fullscreen 1"

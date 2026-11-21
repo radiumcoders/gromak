@@ -29,7 +29,7 @@ use windows::Win32::Graphics::DirectWrite::{
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
 use windows::Win32::Graphics::Imaging::{
     CLSID_WICImagingFactory, GUID_WICPixelFormat32bppPBGRA, IWICBitmapSource, IWICImagingFactory,
-    WICBitmapDitherTypeNone, WICBitmapPaletteTypeMedianCut,
+    WICBitmapDitherTypeNone, WICBitmapPaletteTypeMedianCut, WICBitmapUsePremultipliedAlpha,
 };
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED};
 use windows_sys::Win32::Foundation::{HWND, POINT, RECT, SIZE};
@@ -236,5 +236,19 @@ unsafe fn d2d_bitmap(
 pub unsafe fn icon_bitmap(f: &Factories, target: &ID2D1DCRenderTarget, hicon: isize) -> Option<ID2D1Bitmap> {
     let wic = f.wic.as_ref()?;
     let source = wic.CreateBitmapFromHICON(windows::Win32::UI::WindowsAndMessaging::HICON(hicon as _)).ok()?;
+    d2d_bitmap(wic, target, &source.into())
+}
+
+/// Converts a 32-bit `HBITMAP` with premultiplied alpha (as returned by the
+/// shell's image factory) into a Direct2D bitmap.
+pub unsafe fn hbitmap_bitmap(f: &Factories, target: &ID2D1DCRenderTarget, hbitmap: isize) -> Option<ID2D1Bitmap> {
+    let wic = f.wic.as_ref()?;
+    let source = wic
+        .CreateBitmapFromHBITMAP(
+            windows::Win32::Graphics::Gdi::HBITMAP(hbitmap as _),
+            windows::Win32::Graphics::Gdi::HPALETTE::default(),
+            WICBitmapUsePremultipliedAlpha,
+        )
+        .ok()?;
     d2d_bitmap(wic, target, &source.into())
 }

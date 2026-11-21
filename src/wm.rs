@@ -14,6 +14,7 @@ use crate::config::{
     self, Bind, Command, Config, FsMode, ThemeMode, ThemeSource, WsTarget, MOD_ALT, MOD_WIN, WORKSPACES,
 };
 use crate::keyboard::{self, HookBind};
+use crate::launcher;
 use crate::layout::{self, Dir, Dwindle, Rect};
 use crate::mouse;
 use crate::theme::{self, Palette};
@@ -727,7 +728,7 @@ impl Wm {
 
     /// The pointer moved: focus the managed window under it.
     pub fn on_mouse_move(&mut self) {
-        if !self.cfg.general.focus_follows_mouse || win::mouse_button_down() {
+        if !self.cfg.general.focus_follows_mouse || win::mouse_button_down() || launcher::is_open() {
             return;
         }
         let (x, y) = win::cursor_pos();
@@ -789,6 +790,7 @@ impl Wm {
                 let ws = self.resolve(target);
                 self.move_to_workspace(ws, follow);
             }
+            Command::Launcher => self.toggle_launcher(),
             Command::Reload => self.reload(),
             Command::Exit => unsafe { PostQuitMessage(0) },
         }
@@ -802,18 +804,22 @@ impl Wm {
     }
 
     fn exec(&self, command: &str) {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         let command = command.replace("$terminal", &self.cfg.general.terminal);
-        // `start` resolves App Paths and execution aliases (wt.exe, etc.).
-        let result = std::process::Command::new("cmd.exe")
-            .raw_arg(format!("/C start \"\" {command}"))
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn();
-        match result {
-            Ok(_) => info!("exec {command}"),
+        match win::run_command(&command) {
+            Ok(()) => info!("exec {command}"),
             Err(e) => error!("exec {command}: {e}"),
         }
+    }
+
+    fn toggle_launcher(&self) {
+        let mi = self.active_monitor;
+        let style = launcher::Style {
+            palette: self.palette,
+            font: self.cfg.bar.font.clone(),
+            font_px: self.cfg.bar.font_size as f32 * self.monitors[mi].info.scale,
+            scale: self.monitors[mi].info.scale,
+        };
+        launcher::toggle(self.base_rect(mi), style);
     }
 
     fn toggle_floating(&mut self) {

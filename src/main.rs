@@ -11,6 +11,7 @@ mod config;
 mod fuzzy;
 mod gfx;
 mod keyboard;
+mod launcher;
 mod layout;
 mod mouse;
 mod theme;
@@ -109,6 +110,7 @@ fn main() {
 
     gfx::init();
     bar::init();
+    launcher::init();
     let ctrl = create_ctrl_window();
     if ctrl == 0 {
         error!("could not create the control window");

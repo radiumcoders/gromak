@@ -408,6 +408,7 @@ pub enum Command {
     Cycle(bool),
     Workspace(WsTarget),
     MoveToWorkspace { target: WsTarget, follow: bool },
+    Launcher,
     Reload,
     Exit,
 }
@@ -465,6 +466,7 @@ pub fn parse_command(s: &str) -> Result<Command, String> {
         "workspace" => Command::Workspace(parse_ws(need_arg()?)?),
         "movetoworkspace" => Command::MoveToWorkspace { target: parse_ws(need_arg()?)?, follow: true },
         "movetoworkspacesilent" => Command::MoveToWorkspace { target: parse_ws(need_arg()?)?, follow: false },
+        "launcher" => Command::Launcher,
         "reload" => Command::Reload,
         "exit" => Command::Exit,
         _ => return Err(format!("unknown dispatcher \"{name}\"")),
@@ -539,6 +541,7 @@ mod tests {
             parse_command("movetoworkspacesilent 3"),
             Ok(Command::MoveToWorkspace { target: WsTarget::Index(2), follow: false })
         );
+        assert_eq!(parse_command("launcher"), Ok(Command::Launcher));
         assert_eq!(parse_command("fullscreen"), Ok(Command::Fullscreen(FsMode::Fullscreen)));
         assert_eq!(parse_command("fullscreen 1"), Ok(Command::Fullscreen(FsMode::Maximized)));
         assert!(parse_command("workspace 11").is_err());
