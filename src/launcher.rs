@@ -71,7 +71,7 @@ const REINDEX_AFTER: Duration = Duration::from_secs(30);
 const CARET_TIMER: usize = 1;
 const ANIM_TIMER: usize = 2;
 /// Length of the fade-and-slide when the launcher opens.
-const OPEN_ANIMATION: Duration = Duration::from_millis(140);
+const OPEN_ANIMATION: Duration = Duration::from_millis(200);
 const CARET_BLINK_MS: u32 = 530;
 /// Posted to the launcher window when a background re-index finishes.
 const WM_APPS_INDEXED: u32 = WM_APP + 60;
@@ -428,7 +428,7 @@ pub fn toggle(area: Rect, style: Style) {
     unsafe {
         ShowWindow(hwnd as HWND, SW_SHOW);
         SetTimer(hwnd as HWND, CARET_TIMER, CARET_BLINK_MS, None);
-        SetTimer(hwnd as HWND, ANIM_TIMER, 10, None);
+        SetTimer(hwnd as HWND, ANIM_TIMER, 8, None);
     }
     win::focus(hwnd);
 }
@@ -930,7 +930,7 @@ impl Launcher {
     fn animation(&self) -> (u8, i32) {
         let Some(start) = self.anim_start else { return (255, 0) };
         let t = (start.elapsed().as_secs_f32() / OPEN_ANIMATION.as_secs_f32()).clamp(0.0, 1.0);
-        let eased = 1.0 - (1.0 - t).powi(3);
+        let eased = 1.0 - (1.0 - t).powi(5);
         ((eased * 255.0).round() as u8, ((1.0 - eased) * 10.0 * self.scale()).round() as i32)
     }
 
