@@ -44,6 +44,12 @@ All notable changes to this project are documented here. The format follows
   next start, or `gromak --restore`.
 - CLI: `--list-windows`, `--check-config`, `--config-path`,
   `--default-config`, `--restore`, `--version`, and `--help`.
+- Smooth animations: windows glide to their new place (ease-out quint),
+  workspaces slide in, the active workspace indicator slides between square
+  pills, and Windows' own show/hide scale-and-fade is turned off for managed
+  windows (`[animations]`).
+- The project is now called gromak (config and data folders migrate
+  automatically from the old name).
 - Launcher power actions: lock, sleep, hibernate, sign out, restart and shut
   down (destructive ones need a second Enter).
 - Per-monitor workspaces: every monitor has its own workspaces 1–10.

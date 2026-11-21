@@ -185,6 +185,19 @@ when each one arrives. A chosen GIF is put on the clipboard as `CF_HDROP`
 and pasted with a synthesized Ctrl+V into the window that had focus before
 the launcher opened.
 
+## Animations
+
+DWM's own show/hide transition is disabled on managed windows
+(`DWMWA_TRANSITIONS_FORCEDISABLED`), because hiding and showing windows on
+every workspace switch would make it play constantly. Instead, every
+placement goes through `Wm::place`. It starts an ease-out-quint glide from
+the window's current rectangle (or its mid-animation one) to the target. A
+10 ms timer on the control window advances all running glides and stops when
+nothing moves. A workspace switch first parks the incoming tiles 6% to the
+side while they are still hidden, using a synchronous move so they don't
+flash. The normal layout then glides them into place. The bar's active
+indicator and the launcher animate their own layered windows the same way.
+
 ## Theming
 
 `src/theme.rs` turns the wallpaper into a palette. WIC decodes the image and

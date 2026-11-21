@@ -128,6 +128,10 @@ mouse_drag = true
 source = "wallpaper"  # or "accent" or "manual"
 mode = "auto"          # follow Windows light/dark, or "dark" / "light"
 
+[animations]
+enabled = true         # windows glide into place, workspaces slide in
+duration_ms = 220
+
 [decoration]
 borders = true
 active_border = "#8aadf4"
@@ -335,14 +339,12 @@ clipboard history or Win+N for notifications, remove or rebind that line in
 - **Win key.** Win+L always locks Windows and cannot be rebound. While an
   elevated window has focus, Win-key bindings only work if gromak also runs as
   administrator.
-- **No animations yet.** Windows move instantly.
 - **Hidden workspaces hide taskbar buttons.** Windows on workspaces that aren't
   shown are hidden, so their taskbar buttons disappear until you switch back.
 
 ## Roadmap
 
 - Resizing tiles by dragging their edges
-- Smooth workspace and window animations
 - Per-workspace layouts (master/stack, monocle)
 - Named and persistent workspaces, scratchpad
 - IPC and a `gromak msg` command for scripting
