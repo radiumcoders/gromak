@@ -110,7 +110,7 @@ impl Wm {
             cfg,
             ctrl,
             monitors: Vec::new(),
-            workspaces: (0..WORKSPACES).map(|_| Workspace::default()).collect(),
+            workspaces: Vec::new(),
             windows: HashMap::new(),
             ignored: HashSet::new(),
             focused: None,
@@ -318,33 +318,45 @@ impl Wm {
 
     // ----- monitors and geometry ----------------------------------------
 
-    /// (Re)builds the monitor list, keeping each monitor's workspace where
-    /// possible, and recreates the bars.
+    /// (Re)builds the monitor list and recreates the bars.
+    ///
+    /// Every monitor owns its own [`WORKSPACES`] workspaces: monitor `m`'s
+    /// workspace `n` is `self.workspaces[m * WORKSPACES + n]`. When monitors
+    /// come or go, workspaces follow their monitor (matched by handle, then
+    /// by position); workspaces of a monitor that disappeared are merged
+    /// into the same-numbered workspaces of the first monitor.
     fn detect_monitors(&mut self) {
-        let previous: Vec<usize> = self.monitors.iter().map(|m| m.ws).collect();
-        self.monitors.clear();
-        let mut shown: Vec<usize> = Vec::new();
-        for (i, info) in win::monitors().into_iter().enumerate() {
-            let preferred = previous.get(i).copied().unwrap_or(i % WORKSPACES);
-            let ws = if shown.contains(&preferred) {
-                (0..WORKSPACES).find(|w| !shown.contains(w)).unwrap_or(0)
-            } else {
-                preferred
-            };
-            shown.push(ws);
-            self.monitors.push(Monitor { info, ws, bar: None });
-        }
-        if self.monitors.is_empty() {
+        let infos = win::monitors();
+        if infos.is_empty() {
             error!("no monitors found");
             return;
         }
-        // Workspaces that lost their monitor disappear from view.
-        for ws in previous.into_iter().filter(|ws| !shown.contains(ws)) {
-            for h in self.workspaces[ws].windows() {
-                hidden::hide(h);
-            }
+        let old: Vec<(isize, usize)> = self.monitors.iter().map(|m| (m.info.handle, m.ws)).collect();
+        let new_count = infos.len();
+        // Old monitor index -> new monitor index.
+        let map: Vec<usize> = old
+            .iter()
+            .enumerate()
+            .map(|(i, (handle, _))| {
+                infos.iter().position(|m| m.handle == *handle).unwrap_or(if i < new_count { i } else { 0 })
+            })
+            .collect();
+        self.monitors = infos
+            .into_iter()
+            .enumerate()
+            .map(|(i, info)| {
+                // Keep showing the workspace number this monitor showed before.
+                let n = map.iter().position(|&to| to == i).map_or(0, |from| old[from].1 % WORKSPACES);
+                Monitor { info, ws: i * WORKSPACES + n, bar: None }
+            })
+            .collect();
+
+        let unchanged = old.len() == new_count && map.iter().enumerate().all(|(i, &to)| i == to);
+        if !unchanged || self.workspaces.len() != new_count * WORKSPACES {
+            self.remap_workspaces(&map, new_count);
         }
-        self.active_monitor = self.active_monitor.min(self.monitors.len() - 1);
+        self.active_monitor = self.active_monitor.min(new_count - 1);
+        self.sync_visibility();
         for i in 0..self.monitors.len() {
             let bar = if self.cfg.bar.enabled {
                 let style = Style::new(&self.cfg.bar, &self.palette, self.monitors[i].info.scale);
@@ -353,6 +365,54 @@ impl Wm {
                 None
             };
             self.monitors[i].bar = bar;
+        }
+    }
+
+    /// Moves every window into the workspace list for `new_count` monitors,
+    /// following `map` (old monitor index -> new monitor index).
+    fn remap_workspaces(&mut self, map: &[usize], new_count: usize) {
+        let old = std::mem::take(&mut self.workspaces);
+        self.workspaces = (0..new_count * WORKSPACES).map(|_| Workspace::default()).collect();
+        for (old_ws, workspace) in old.into_iter().enumerate() {
+            let (old_mi, n) = (old_ws / WORKSPACES, old_ws % WORKSPACES);
+            let to = map.get(old_mi).copied().unwrap_or(0) * WORKSPACES + n;
+            for h in workspace.tree.windows() {
+                if let Some(m) = self.windows.get_mut(&h) {
+                    m.ws = to;
+                }
+                let target = self.workspaces[to].tree.windows().last().copied();
+                self.tile_into(h, to, target);
+            }
+            for f in workspace.floating {
+                if let Some(m) = self.windows.get_mut(&f) {
+                    m.ws = to;
+                }
+                self.workspaces[to].floating.push(f);
+            }
+            if self.workspaces[to].last_focus.is_none() {
+                self.workspaces[to].last_focus = workspace.last_focus;
+            }
+        }
+    }
+
+    /// Makes visibility match the model: windows of shown workspaces are
+    /// visible, all others hidden. Run after anything that changes which
+    /// workspaces are shown.
+    fn sync_visibility(&mut self) {
+        for ws in 0..self.workspaces.len() {
+            let shown = self.monitor_of_ws(ws).is_some();
+            for h in self.workspaces[ws].windows() {
+                if shown && hidden::contains(h) {
+                    hidden::show(h);
+                } else if !shown && !hidden::contains(h) {
+                    hidden::hide(h);
+                }
+            }
+        }
+        if let Some(f) = self.focused {
+            if hidden::contains(f) {
+                self.set_focused(None);
+            }
         }
     }
 
@@ -402,8 +462,10 @@ impl Wm {
         self.monitors.iter().position(|m| m.info.handle == handle).unwrap_or(0)
     }
 
+    /// The monitor showing workspace `ws`, if it is shown.
     fn monitor_of_ws(&self, ws: usize) -> Option<usize> {
-        self.monitors.iter().position(|m| m.ws == ws)
+        let mi = ws / WORKSPACES;
+        (self.monitors.get(mi)?.ws == ws).then_some(mi)
     }
 
     fn monitor_in_dir(&self, from: usize, dir: Dir) -> Option<usize> {
@@ -416,10 +478,15 @@ impl Wm {
         self.monitors[self.active_monitor].ws
     }
 
+    /// Workspace numbers always refer to the active monitor's workspaces.
     fn resolve(&self, target: WsTarget) -> usize {
+        let base = self.active_monitor * WORKSPACES;
         match target {
-            WsTarget::Index(i) => i.min(WORKSPACES - 1),
-            WsTarget::Relative(d) => (self.current_ws() as i32 + d).rem_euclid(WORKSPACES as i32) as usize,
+            WsTarget::Index(i) => base + i.min(WORKSPACES - 1),
+            WsTarget::Relative(d) => {
+                let local = (self.current_ws() - base) as i32;
+                base + (local + d).rem_euclid(WORKSPACES as i32) as usize
+            }
         }
     }
 
@@ -448,7 +515,9 @@ impl Wm {
             }
             floating |= rule.float;
             if let Some(n) = rule.workspace {
-                ws = Some(n - 1);
+                // Workspace n of the monitor the window opened on.
+                let mi = ws.map_or(self.active_monitor, |w| w / WORKSPACES);
+                ws = Some(mi * WORKSPACES + n - 1);
             }
         }
         let ws = ws.unwrap_or_else(|| self.current_ws());
@@ -631,9 +700,12 @@ impl Wm {
         let title = self.focused.map(win::title).unwrap_or_default();
         for (i, mon) in self.monitors.iter().enumerate() {
             let Some(bar) = &mon.bar else { continue };
+            // This monitor's own workspaces, numbered 1-10 on its bar.
+            let base = i * WORKSPACES;
             let workspaces = (0..WORKSPACES)
-                .filter(|&w| w == mon.ws || !self.workspaces[w].is_empty())
-                .map(|w| WsItem { index: w, active: w == mon.ws, occupied: !self.workspaces[w].is_empty() })
+                .map(|n| (n, base + n))
+                .filter(|&(_, w)| w == mon.ws || !self.workspaces[w].is_empty())
+                .map(|(n, w)| WsItem { index: n, active: w == mon.ws, occupied: !self.workspaces[w].is_empty() })
                 .collect();
             bar.set_state(BarState {
                 workspaces,
@@ -646,21 +718,22 @@ impl Wm {
 
     // ----- workspaces -----------------------------------------------------
 
-    /// Shows workspace `target` on the active monitor (or focuses the
-    /// monitor already showing it).
+    /// Shows workspace `target` on the monitor that owns it (see
+    /// [`Wm::detect_monitors`]) and focuses it.
     fn switch_workspace(&mut self, target: usize) {
-        let mi = self.active_monitor;
-        let old = self.monitors[mi].ws;
-        if old == target {
+        let mi = target / WORKSPACES;
+        if mi >= self.monitors.len() {
             return;
         }
-        if let Some(other) = self.monitor_of_ws(target) {
-            self.active_monitor = other;
+        self.active_monitor = mi;
+        let old = self.monitors[mi].ws;
+        if old == target {
             self.focus_in_ws(target);
             return;
         }
         self.monitors[mi].ws = target;
-        // Recenter floating windows that were last shown on another monitor.
+        // Bring floating windows that were sent here from another monitor
+        // onto this one.
         let handle = self.monitors[mi].info.handle;
         let area = self.tiling_area(mi);
         for &f in &self.workspaces[target].floating {
@@ -695,6 +768,9 @@ impl Wm {
         self.transfer(h, target, tile_target);
         let visible = self.monitor_of_ws(target).is_some();
         if visible {
+            if hidden::contains(h) {
+                hidden::show(h);
+            }
             self.layout_ws(target);
         } else if !follow {
             hidden::hide(h);
@@ -707,7 +783,8 @@ impl Wm {
                 self.switch_workspace(target);
             }
         } else {
-            self.focused = None;
+            // Through set_focused, so the moved window's border is reset.
+            self.set_focused(None);
             self.focus_in_ws(src);
         }
     }
