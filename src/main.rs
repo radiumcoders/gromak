@@ -7,6 +7,7 @@
 #[macro_use]
 mod log;
 mod bar;
+mod calc;
 mod config;
 mod fuzzy;
 mod gfx;
