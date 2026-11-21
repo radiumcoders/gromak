@@ -6,9 +6,9 @@
 
 [general]
 # Pixels between neighbouring windows.
-gaps_in = 5
+gaps_in = 4
 # Pixels between windows and the edge of the screen (and the bar).
-gaps_out = 10
+gaps_out = 6
 # The key that "mod" stands for in [binds]: alt, win, ctrl, shift,
 # or a combination such as "ctrl+alt". Note that many win+key shortcuts
 # are reserved by Windows and cannot be registered.
@@ -51,9 +51,9 @@ inactive_border = "#363a4f"
 [bar]
 enabled = true
 # Height in logical pixels (scaled with the monitor's DPI).
-height = 32
+height = 26
 font = "Segoe UI Variable Text"
-font_size = 13
+font_size = 12
 # Colours used when theme.source = "manual".
 background = "#181926"
 foreground = "#cad3f5"
@@ -62,7 +62,7 @@ muted = "#5b6078"
 # The bar is drawn as floating islands; this is their opacity (0.0 - 1.0).
 opacity = 0.9
 # Corner radius of the islands, in logical pixels.
-corner_radius = 10
+corner_radius = 8
 show_title = true
 show_clock = true
 clock_24h = true

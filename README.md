@@ -118,8 +118,8 @@ previous config.
 
 ```toml
 [general]
-gaps_in = 5
-gaps_out = 10
+gaps_in = 4
+gaps_out = 6
 mod = "alt"
 terminal = "wt.exe"
 hide_taskbar = false
@@ -136,11 +136,11 @@ inactive_border = "#363a4f"
 
 [bar]
 enabled = true
-height = 32
+height = 26
 opacity = 0.9        # island opacity, 0.0 - 1.0
 corner_radius = 10
 font = "Segoe UI Variable Text"
-font_size = 13
+font_size = 12
 background = "#181926"
 foreground = "#cad3f5"
 accent = "#8aadf4"

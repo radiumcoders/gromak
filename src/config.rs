@@ -216,8 +216,8 @@ pub struct Rule {
 impl Default for General {
     fn default() -> Self {
         General {
-            gaps_in: 5,
-            gaps_out: 10,
+            gaps_in: 4,
+            gaps_out: 6,
             modifier: "alt".into(),
             terminal: "wt.exe".into(),
             hide_taskbar: false,
@@ -238,15 +238,15 @@ impl Default for Bar {
     fn default() -> Self {
         Bar {
             enabled: true,
-            height: 32,
+            height: 26,
             font: "Segoe UI Variable Text".into(),
-            font_size: 13,
+            font_size: 12,
             background: "#181926".into(),
             foreground: "#cad3f5".into(),
             accent: "#8aadf4".into(),
             muted: "#5b6078".into(),
             opacity: 0.9,
-            corner_radius: 10,
+            corner_radius: 8,
             show_title: true,
             show_clock: true,
             clock_24h: true,
@@ -595,7 +595,7 @@ mod tests {
     fn partial_sections_keep_other_defaults() {
         let cfg = parse("[general]\ngaps_in = 2\n[binds]\n\"alt+x\" = \"exit\"").unwrap();
         assert_eq!(cfg.general.gaps_in, 2);
-        assert_eq!(cfg.general.gaps_out, 10);
+        assert_eq!(cfg.general.gaps_out, 6);
         assert_eq!(cfg.binds.len(), 1);
         assert_eq!(cfg.rules, default_rules());
     }
