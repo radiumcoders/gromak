@@ -4,12 +4,16 @@
 
 gromak arranges your windows into a clean dwindle layout with gaps, gives you
 ten workspaces per monitor that you can flip between instantly, and stays out of
-the way: one floating bar per monitor, a coloured border on the focused window,
-and nothing else.
+the way: one slim, blurred bar per monitor, a coloured border on the focused
+window, and nothing else.
 
-![gromak tiling a terminal, Calculator and Paint](docs/screenshots/tiling.png)
+![gromak with a floating window and the bar's calendar popup](docs/screenshots/desktop.png)
 
-![The floating island bar](docs/screenshots/bar.png)
+![The Win+Space launcher searching orc.pictures GIFs](docs/screenshots/launcher.png)
+
+![The full-width blurred bar](docs/screenshots/bar.png)
+
+<p align="center"><img src="docs/screenshots/clock.png" alt="The bar's clock popup" width="300"></p>
 
 > **Status:** early (v0.1). It is usable day to day, but expect rough edges.
 > If gromak ever exits unexpectedly, run `gromak --restore` to bring back
