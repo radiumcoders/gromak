@@ -38,7 +38,7 @@ use windows::core::{IUnknown, Interface, PCWSTR, PWSTR};
 use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
 use windows::Win32::Graphics::Direct2D::{
     ID2D1Bitmap, ID2D1DCRenderTarget, ID2D1SolidColorBrush, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
-    D2D1_DRAW_TEXT_OPTIONS_NONE, D2D1_ELLIPSE,
+    D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, D2D1_DRAW_TEXT_OPTIONS_NONE, D2D1_ELLIPSE,
 };
 use windows::Win32::Graphics::DirectWrite::{IDWriteTextFormat, DWRITE_FONT_WEIGHT, DWRITE_TEXT_RANGE};
 use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, COINIT_APARTMENTTHREADED};
@@ -66,6 +66,9 @@ const MAX_RESULTS: usize = 200;
 /// Re-scan the app list when opening if the last scan is older than this.
 const REINDEX_AFTER: Duration = Duration::from_secs(30);
 const CARET_TIMER: usize = 1;
+const ANIM_TIMER: usize = 2;
+/// Length of the fade-and-slide when the launcher opens.
+const OPEN_ANIMATION: Duration = Duration::from_millis(140);
 const CARET_BLINK_MS: u32 = 530;
 /// Posted to the launcher window when a background re-index finishes.
 const WM_APPS_INDEXED: u32 = WM_APP + 60;
@@ -104,7 +107,6 @@ struct Gfx {
     accent: ID2D1SolidColorBrush,
     query: IDWriteTextFormat,
     item: IDWriteTextFormat,
-    hint: IDWriteTextFormat,
     /// App icons by target (None = no icon available).
     icons: HashMap<String, Option<ID2D1Bitmap>>,
 }
@@ -137,6 +139,8 @@ struct Launcher {
     /// when a window appears under the pointer, which must not change the
     /// selection.
     open_cursor: (i32, i32),
+    /// When the open animation started (None once finished).
+    anim_start: Option<Instant>,
 }
 
 thread_local! {
@@ -318,6 +322,7 @@ pub fn init() {
             caret_on: true,
             previous_foreground: 0,
             open_cursor: (0, 0),
+            anim_start: None,
         })
     });
     refresh_index();
@@ -345,6 +350,7 @@ pub fn toggle(area: Rect, style: Style) {
         l.caret_on = true;
         l.previous_foreground = win::foreground();
         l.open_cursor = win::cursor_pos();
+        l.anim_start = Some(Instant::now());
         l.refilter();
         l.hwnd
     });
@@ -354,6 +360,7 @@ pub fn toggle(area: Rect, style: Style) {
     unsafe {
         ShowWindow(hwnd as HWND, SW_SHOW);
         SetTimer(hwnd as HWND, CARET_TIMER, CARET_BLINK_MS, None);
+        SetTimer(hwnd as HWND, ANIM_TIMER, 10, None);
     }
     win::focus(hwnd);
 }
@@ -369,6 +376,7 @@ fn close(restore_focus: bool) {
     let Some((hwnd, previous)) = with_state(|l| (l.hwnd, l.previous_foreground)) else { return };
     unsafe {
         KillTimer(hwnd as HWND, CARET_TIMER);
+        KillTimer(hwnd as HWND, ANIM_TIMER);
         ShowWindow(hwnd as HWND, SW_HIDE);
     }
     if restore_focus && previous != 0 && win::is_window(previous) {
@@ -534,11 +542,19 @@ impl Launcher {
         Action::Render
     }
 
+    /// Pushes the last drawn frame, applying the open animation.
+    fn present(&self) {
+        let Some(surface) = &self.surface else { return };
+        let (alpha, slide) = self.animation();
+        let rect = Rect { y: self.rect.y + slide, ..self.rect };
+        unsafe { crate::gfx::present(self.hwnd, surface, rect, alpha) };
+    }
+
     /// Layout metrics in pixels: (width, search height, row height, padding).
     fn metrics(&self) -> (f32, f32, f32, f32) {
         let s = self.style.as_ref().map_or(1.0, |st| st.scale);
-        let width = (640.0 * s).min(self.area.w as f32 - 40.0 * s).max(200.0);
-        (width.round(), (54.0 * s).round(), (42.0 * s).round(), (8.0 * s).round())
+        let width = (660.0 * s).min(self.area.w as f32 - 40.0 * s).max(200.0);
+        (width.round(), (60.0 * s).round(), (46.0 * s).round(), (10.0 * s).round())
     }
 
     fn visible_rows(&self) -> usize {
@@ -547,7 +563,7 @@ impl Launcher {
 
     fn list_top(&self) -> f32 {
         let (_, search_h, _, pad) = self.metrics();
-        pad + search_h + if self.rows.is_empty() { 0.0 } else { (4.0 * self.scale()).round() }
+        pad + search_h + if self.rows.is_empty() { 0.0 } else { (6.0 * self.scale()).round() }
     }
 
     fn scale(&self) -> f32 {
@@ -559,9 +575,15 @@ impl Launcher {
         self.list_top() + self.visible_rows() as f32 * row_h + pad
     }
 
+    /// Transparent margin around the panel that holds its drop shadow.
+    fn margin(&self) -> f32 {
+        (28.0 * self.scale()).round()
+    }
+
     /// The result row under a window-relative point.
     fn row_at(&self, y: f32) -> Option<usize> {
         let (_, _, row_h, _) = self.metrics();
+        let y = y - self.margin();
         let top = self.list_top();
         if y < top {
             return None;
@@ -601,6 +623,16 @@ unsafe extern "system" fn launcher_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LP
         WM_ACTIVATE if (wp & 0xFFFF) as u32 == WA_INACTIVE => Some(Action::Close { restore_focus: false }),
         WM_KEYDOWN | WM_SYSKEYDOWN => with_state(|l| l.on_key(wp as u16)),
         WM_CHAR => with_state(|l| l.on_char(wp as u16)),
+        WM_TIMER if wp == ANIM_TIMER => {
+            with_state(|l| {
+                l.present();
+                if l.anim_start.is_some_and(|t| t.elapsed() >= OPEN_ANIMATION) {
+                    l.anim_start = None;
+                    KillTimer(hwnd, ANIM_TIMER);
+                }
+            });
+            return 0;
+        }
         WM_TIMER if wp == CARET_TIMER => with_state(|l| {
             l.caret_on = !l.caret_on;
             Action::Render
@@ -674,9 +706,7 @@ fn render() {
                 l.gfx = None;
                 return;
             }
-            if let Some(surface) = &l.surface {
-                crate::gfx::present(l.hwnd, surface, l.rect);
-            }
+            l.present();
         });
     });
 }
@@ -688,9 +718,8 @@ unsafe fn create_gfx(f: &Factories, style: &Style) -> windows::core::Result<Gfx>
         target,
         brush,
         accent,
-        query: crate::gfx::text_format(f, &style.font, 450, style.font_px * 1.25)?,
-        item: crate::gfx::text_format(f, &style.font, 450, style.font_px * 1.1)?,
-        hint: crate::gfx::text_format(f, &style.font, 450, style.font_px * 0.95)?,
+        query: crate::gfx::text_format(f, &style.font, 400, style.font_px * 1.35)?,
+        item: crate::gfx::text_format(f, &style.font, 450, style.font_px * 1.12)?,
         icons: HashMap::new(),
     })
 }
@@ -720,6 +749,14 @@ fn utf16_offsets(text: &str, positions: &[usize]) -> Vec<u32> {
 }
 
 impl Launcher {
+    /// Opacity (0–255) and upward slide offset (pixels) of the open animation.
+    fn animation(&self) -> (u8, i32) {
+        let Some(start) = self.anim_start else { return (255, 0) };
+        let t = (start.elapsed().as_secs_f32() / OPEN_ANIMATION.as_secs_f32()).clamp(0.0, 1.0);
+        let eased = 1.0 - (1.0 - t).powi(3);
+        ((eased * 255.0).round() as u8, ((1.0 - eased) * 10.0 * self.scale()).round() as i32)
+    }
+
     unsafe fn draw(&mut self, f: &Factories) -> windows::core::Result<()> {
         let Some(style) = self.style.clone() else { return Ok(()) };
         let s = style.scale;
@@ -727,17 +764,19 @@ impl Launcher {
         let h = self.height();
         let top = self.list_top();
         let visible = self.visible_rows();
-        let max_h = top.max(pad + search_h + 4.0 * s) + MAX_ROWS as f32 * row_h + pad;
+        let m = self.margin();
+        let max_h = pad + search_h + 6.0 * s + MAX_ROWS as f32 * row_h + pad;
 
-        // Place the panel: centred, about a fifth of the way down.
+        // The window covers the panel plus a margin for the shadow. The
+        // panel sits about a fifth of the way down the monitor.
         let area = self.area;
         self.rect = Rect::new(
-            area.x + ((area.w as f32 - w) / 2.0) as i32,
-            area.y + (area.h as f32 * 0.2) as i32,
-            w as i32,
-            h.ceil() as i32,
+            area.x + ((area.w as f32 - w) / 2.0 - m) as i32,
+            area.y + (area.h as f32 * 0.2 - m) as i32,
+            (w + 2.0 * m) as i32,
+            (h + 2.0 * m).ceil() as i32,
         );
-        let size = (w as i32, max_h.ceil() as i32);
+        let size = ((w + 2.0 * m) as i32, (max_h + 2.0 * m).ceil() as i32);
         if self.surface.is_none() || self.surface_size != size {
             self.surface = Surface::new(size.0, size.1);
             self.surface_size = size;
@@ -748,107 +787,110 @@ impl Launcher {
         }
         let gfx = self.gfx.as_mut().expect("just created");
         let p = &style.palette;
+        let light = crate::theme::rgb_to_hsl([
+            (p.background & 0xFF) as u8,
+            ((p.background >> 8) & 0xFF) as u8,
+            ((p.background >> 16) & 0xFF) as u8,
+        ])
+        .l > 0.5;
 
         crate::gfx::bind(&gfx.target, surface, size.0, size.1)?;
         gfx.target.BeginDraw();
         gfx.target.Clear(Some(&rgba(0, 0.0)));
         let target = &gfx.target;
         let brush = &gfx.brush;
+        let radius = (16.0 * s).round();
 
-        // Panel.
-        let radius = (14.0 * s).round();
-        let panel = rounded(0.5, 0.5, w - 0.5, h - 0.5, radius);
-        brush.SetColor(&rgba(p.background, 1.0));
-        target.FillRoundedRectangle(&panel, brush);
-        brush.SetColor(&rgba(p.foreground, 0.12));
-        target.DrawRoundedRectangle(&panel, brush, 1.0, None);
-
-        // Search field: magnifier, query (or placeholder), caret.
-        let center_y = pad + search_h / 2.0;
-        let glass_x = pad + 20.0 * s;
-        let glass_r = 6.0 * s;
-        brush.SetColor(&rgba(p.foreground, 0.55));
-        let ellipse =
-            D2D1_ELLIPSE { point: Vector2 { X: glass_x, Y: center_y - 1.5 * s }, radiusX: glass_r, radiusY: glass_r };
-        target.DrawEllipse(&ellipse, brush, 1.8 * s, None);
-        target.DrawLine(
-            Vector2 { X: glass_x + glass_r * 0.72, Y: center_y - 1.5 * s + glass_r * 0.72 },
-            Vector2 { X: glass_x + glass_r * 1.55, Y: center_y - 1.5 * s + glass_r * 1.55 },
-            brush,
-            1.8 * s,
-            None,
-        );
-        let text_x = pad + 42.0 * s;
-        let text_w = w - text_x - pad - 14.0 * s;
-        let query_h = search_h;
-        let mut caret_x = text_x;
-        if self.query.is_empty() {
-            if let Some(placeholder) = label(f, &gfx.query, "Search apps", text_w, query_h) {
-                brush.SetColor(&rgba(p.foreground, 0.38));
-                target.DrawTextLayout(
-                    Vector2 { X: text_x, Y: pad },
-                    &placeholder.layout,
-                    brush,
-                    D2D1_DRAW_TEXT_OPTIONS_NONE,
-                );
-            }
-        } else if let Some(query) = label(f, &gfx.query, &self.query, text_w, query_h) {
-            brush.SetColor(&rgba(p.foreground, 1.0));
-            target.DrawTextLayout(Vector2 { X: text_x, Y: pad }, &query.layout, brush, D2D1_DRAW_TEXT_OPTIONS_NONE);
-            caret_x = text_x + query.width + 1.0;
-        }
-        if self.caret_on {
-            let caret_h = style.font_px * 1.45;
-            brush.SetColor(&rgba(p.accent, 1.0));
-            target.FillRectangle(
-                &D2D_RECT_F {
-                    left: caret_x,
-                    top: center_y - caret_h / 2.0,
-                    right: caret_x + (2.0 * s).max(1.5),
-                    bottom: center_y + caret_h / 2.0,
-                },
+        // Soft drop shadow: stacked, expanding, faint rounded rectangles.
+        let shadow_alpha = if light { 0.012 } else { 0.03 };
+        let steps = 14;
+        for i in 0..steps {
+            let grow = m * 0.85 * (i + 1) as f32 / steps as f32;
+            let dy = 6.0 * s;
+            brush.SetColor(&rgba(0, shadow_alpha));
+            target.FillRoundedRectangle(
+                &rounded(m - grow, m - grow + dy, m + w + grow, m + h + grow + dy, radius + grow),
                 brush,
             );
         }
 
-        // Divider and results.
+        // Panel.
+        let panel = rounded(m + 0.5, m + 0.5, m + w - 0.5, m + h - 0.5, radius);
+        brush.SetColor(&rgba(p.background, 1.0));
+        target.FillRoundedRectangle(&panel, brush);
+        brush.SetColor(&rgba(p.foreground, if light { 0.10 } else { 0.08 }));
+        target.DrawRoundedRectangle(&panel, brush, 1.0, None);
+
+        // Search field: magnifier, query or placeholder, blinking caret.
+        let center_y = m + pad + search_h / 2.0;
+        let glass_x = m + pad + 22.0 * s;
+        let glass_r = 6.5 * s;
+        brush.SetColor(&rgba(p.foreground, 0.45));
+        let glass_cy = center_y - 1.5 * s;
+        let ellipse = D2D1_ELLIPSE { point: Vector2 { X: glass_x, Y: glass_cy }, radiusX: glass_r, radiusY: glass_r };
+        target.DrawEllipse(&ellipse, brush, 1.6 * s, None);
+        target.DrawLine(
+            Vector2 { X: glass_x + glass_r * 0.72, Y: glass_cy + glass_r * 0.72 },
+            Vector2 { X: glass_x + glass_r * 1.5, Y: glass_cy + glass_r * 1.5 },
+            brush,
+            1.6 * s,
+            None,
+        );
+        let text_x = m + pad + 46.0 * s;
+        let text_w = w - (text_x - m) - pad - 16.0 * s;
+        let mut caret_x = text_x;
+        let query_origin = Vector2 { X: text_x, Y: m + pad };
+        if self.query.is_empty() {
+            if let Some(placeholder) = label(f, &gfx.query, "Search apps", text_w, search_h) {
+                brush.SetColor(&rgba(p.foreground, 0.32));
+                target.DrawTextLayout(query_origin, &placeholder.layout, brush, D2D1_DRAW_TEXT_OPTIONS_NONE);
+            }
+        } else if let Some(query) = label(f, &gfx.query, &self.query, text_w, search_h) {
+            brush.SetColor(&rgba(p.foreground, 1.0));
+            target.DrawTextLayout(query_origin, &query.layout, brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
+            caret_x = text_x + query.width + 1.0;
+        }
+        if self.caret_on {
+            let caret_h = style.font_px * 1.55;
+            brush.SetColor(&rgba(p.accent, 1.0));
+            target.FillRoundedRectangle(
+                &rounded(caret_x, center_y - caret_h / 2.0, caret_x + (2.0 * s).max(1.5), center_y + caret_h / 2.0, s),
+                brush,
+            );
+        }
+
         if !self.rows.is_empty() {
-            let y = pad + search_h + (2.0 * s).round() - 0.5;
-            brush.SetColor(&rgba(p.foreground, 0.08));
+            let y = m + pad + search_h + (3.0 * s).round() - 0.5;
+            brush.SetColor(&rgba(p.foreground, 0.07));
             target.DrawLine(
-                Vector2 { X: pad + 10.0 * s, Y: y },
-                Vector2 { X: w - pad - 10.0 * s, Y: y },
+                Vector2 { X: m + pad + 12.0 * s, Y: y },
+                Vector2 { X: m + w - pad - 12.0 * s, Y: y },
                 brush,
                 1.0,
                 None,
             );
         }
-        let icon_size = (24.0 * s).round();
-        let icon_x = pad + 14.0 * s;
-        let name_x = icon_x + icon_size + 12.0 * s;
-        let name_w = w - name_x - pad - 36.0 * s;
+
+        // Results.
+        let icon_size = (26.0 * s).round();
+        let icon_x = m + pad + 14.0 * s;
+        let name_x = icon_x + icon_size + 14.0 * s;
+        let scrollbar = self.rows.len() > MAX_ROWS;
+        let right = m + w - pad - if scrollbar { 18.0 * s } else { 12.0 * s };
+        let name_w = right - name_x;
         for (slot, index) in (self.scroll..self.scroll + visible).enumerate() {
-            let y0 = top + slot as f32 * row_h;
+            let y0 = m + top + slot as f32 * row_h;
             let selected = index == self.selected;
             if selected {
-                brush.SetColor(&rgba(p.accent, 0.20));
-                target
-                    .FillRoundedRectangle(&rounded(pad, y0 + 1.0, w - pad, y0 + row_h - 1.0, (9.0 * s).round()), brush);
-                brush.SetColor(&rgba(p.accent, 1.0));
-                let bar_h = row_h * 0.42;
-                target.FillRoundedRectangle(
-                    &rounded(
-                        pad + 3.0 * s,
-                        y0 + (row_h - bar_h) / 2.0,
-                        pad + 6.0 * s,
-                        y0 + (row_h + bar_h) / 2.0,
-                        2.0 * s,
-                    ),
-                    brush,
+                gfx.brush.SetColor(&rgba(p.accent, if light { 0.16 } else { 0.18 }));
+                gfx.target.FillRoundedRectangle(
+                    &rounded(m + pad, y0 + 1.0, m + w - pad, y0 + row_h - 1.0, (10.0 * s).round()),
+                    &gfx.brush,
                 );
             }
+            let text_alpha = if selected { 1.0 } else { 0.86 };
             match &self.rows[index] {
-                Row::App(i, m) => {
+                Row::App(i, matched) => {
                     let app = &self.apps[*i];
                     if !gfx.icons.contains_key(&app.target) {
                         let icon = app_icon(f, &gfx.target, &app.target, (32.0 * s).round() as i32);
@@ -861,14 +903,14 @@ impl Launcher {
                         gfx.target.DrawBitmap(icon, Some(&dest), 1.0, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, None);
                     }
                     if let Some(name) = label(f, &gfx.item, &app.name, name_w, row_h) {
-                        // Matched characters: bold and accent-coloured.
+                        // Matched characters: accent-coloured and a touch bolder.
                         let accent_effect: IUnknown = gfx.accent.cast()?;
-                        for start in utf16_offsets(&app.name, &m.positions) {
+                        for start in utf16_offsets(&app.name, &matched.positions) {
                             let range = DWRITE_TEXT_RANGE { startPosition: start, length: 1 };
-                            name.layout.SetFontWeight(DWRITE_FONT_WEIGHT(700), range)?;
+                            name.layout.SetFontWeight(DWRITE_FONT_WEIGHT(600), range)?;
                             name.layout.SetDrawingEffect(&accent_effect, range)?;
                         }
-                        gfx.brush.SetColor(&rgba(p.foreground, if selected { 1.0 } else { 0.86 }));
+                        gfx.brush.SetColor(&rgba(p.foreground, text_alpha));
                         gfx.target.DrawTextLayout(
                             Vector2 { X: name_x, Y: y0 },
                             &name.layout,
@@ -878,20 +920,29 @@ impl Launcher {
                     }
                 }
                 Row::Run(command) => {
-                    let text = format!("Run “{command}”");
-                    if let Some(run) = label(f, &gfx.item, &text, w - icon_x - pad - 36.0 * s, row_h) {
-                        gfx.brush.SetColor(&rgba(p.foreground, 0.9));
+                    if let Some(prefix) = label(f, &gfx.item, "Run", name_w, row_h) {
+                        gfx.brush.SetColor(&rgba(p.foreground, 0.5));
                         gfx.target.DrawTextLayout(
                             Vector2 { X: icon_x, Y: y0 },
-                            &run.layout,
+                            &prefix.layout,
                             &gfx.brush,
                             D2D1_DRAW_TEXT_OPTIONS_NONE,
                         );
+                        let cx = icon_x + prefix.width + 8.0 * s;
+                        if let Some(cmd) = label(f, &gfx.item, command, right - cx, row_h) {
+                            gfx.brush.SetColor(&rgba(p.foreground, text_alpha));
+                            gfx.target.DrawTextLayout(
+                                Vector2 { X: cx, Y: y0 },
+                                &cmd.layout,
+                                &gfx.brush,
+                                D2D1_DRAW_TEXT_OPTIONS_NONE,
+                            );
+                        }
                     }
                 }
                 Row::Message(text) => {
-                    if let Some(msg) = label(f, &gfx.item, text, w - icon_x - pad, row_h) {
-                        gfx.brush.SetColor(&rgba(p.foreground, 0.5));
+                    if let Some(msg) = label(f, &gfx.item, text, right - icon_x, row_h) {
+                        gfx.brush.SetColor(&rgba(p.foreground, 0.45));
                         gfx.target.DrawTextLayout(
                             Vector2 { X: icon_x, Y: y0 },
                             &msg.layout,
@@ -901,17 +952,18 @@ impl Launcher {
                     }
                 }
             }
-            if selected && !matches!(self.rows[index], Row::Message(_)) {
-                if let Some(enter) = label(f, &gfx.hint, "↵", 40.0 * s, row_h) {
-                    gfx.brush.SetColor(&rgba(p.foreground, 0.45));
-                    gfx.target.DrawTextLayout(
-                        Vector2 { X: w - pad - 14.0 * s - enter.width, Y: y0 },
-                        &enter.layout,
-                        &gfx.brush,
-                        D2D1_DRAW_TEXT_OPTIONS_NONE,
-                    );
-                }
-            }
+        }
+
+        // Scrollbar, when there are more results than rows.
+        if scrollbar {
+            let track_top = m + top + 4.0 * s;
+            let track_h = visible as f32 * row_h - 8.0 * s;
+            let total = self.rows.len() as f32;
+            let thumb_h = (track_h * visible as f32 / total).max(18.0 * s);
+            let thumb_y = track_top + (track_h - thumb_h) * self.scroll as f32 / (total - visible as f32).max(1.0);
+            let x = m + w - pad - 6.0 * s;
+            gfx.brush.SetColor(&rgba(p.foreground, 0.16));
+            gfx.target.FillRoundedRectangle(&rounded(x, thumb_y, x + 3.0 * s, thumb_y + thumb_h, 1.5 * s), &gfx.brush);
         }
         gfx.target.EndDraw(None, None)
     }

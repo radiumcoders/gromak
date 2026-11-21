@@ -139,12 +139,13 @@ pub unsafe fn bind(target: &ID2D1DCRenderTarget, surface: &Surface, w: i32, h: i
 }
 
 /// Pushes the top-left `rect.w`×`rect.h` pixels of `surface` to the layered
-/// window `hwnd`, placing it at `rect.x`, `rect.y`.
-pub unsafe fn present(hwnd: isize, surface: &Surface, rect: Rect) {
+/// window `hwnd`, placing it at `rect.x`, `rect.y`, with an overall opacity of
+/// `alpha` (255 = as drawn), used for fade animations.
+pub unsafe fn present(hwnd: isize, surface: &Surface, rect: Rect, alpha: u8) {
     let blend = BLENDFUNCTION {
         BlendOp: AC_SRC_OVER as u8,
         BlendFlags: 0,
-        SourceConstantAlpha: 255,
+        SourceConstantAlpha: alpha,
         AlphaFormat: AC_SRC_ALPHA as u8,
     };
     let screen = GetDC(null_mut());

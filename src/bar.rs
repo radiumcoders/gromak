@@ -335,7 +335,7 @@ fn render(hwnd: isize) {
                 return;
             }
             if let Some(surface) = &model.surface {
-                crate::gfx::present(hwnd, surface, model.rect);
+                crate::gfx::present(hwnd, surface, model.rect, 255);
             }
         });
     });
