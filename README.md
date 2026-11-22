@@ -41,9 +41,15 @@ window, and nothing else.
   most-used-first ranking. If nothing matches, Enter runs what you typed.
   It also has a calculator, an emoji picker (`:`) and an
   [orc.pictures](https://orc.pictures) GIF picker (`gif `).
-- **Blurred bar.** One slim strip along the top of each monitor with a subtle
-  frosted-glass blur: workspaces, the focused window's icon and title, and the
-  date and time. Prefer floating islands? Set `style = "islands"`.
+- **Flat, modular bar.** One slim strip along the top of each monitor (or
+  floating islands with `style = "islands"`) built from widgets you place
+  yourself, like waybar's modules: workspaces, the focused window, clock, Wi-Fi,
+  Bluetooth, CPU, memory and volume, plus `custom/*` widgets that show the
+  output of any command. Click a widget for its panel: join Wi-Fi networks,
+  switch Wi-Fi or Bluetooth, watch CPU and memory graphs, set the volume.
+- **Goeist built in.** The bar and its panels use Goeist and Goeist Mono
+  (rounded Geist, SIL Open Font License), embedded in gromak, so nothing needs
+  installing.
 - **Themed by your wallpaper.** The bar and the focused window's border take
   their colours from your desktop wallpaper and follow it when it changes,
   in dark or light mode. You can also use your Windows accent colour, or
@@ -53,7 +59,7 @@ window, and nothing else.
 - **Multi-monitor and per-monitor DPI aware.** Gaps and the bar scale with each display.
 - **Safe.** Hidden windows are tracked on disk and restored on exit, logoff,
   crash recovery, or `gromak --restore`. No DLL injection and no admin rights required.
-- **Small.** A single executable of about 1.3 MB with no runtime dependencies.
+- **Small.** A single executable of about 2.3 MB, fonts included, with no runtime dependencies.
 
 ## Resource usage
 
@@ -65,7 +71,7 @@ launcher used a few times:
 | RAM (working set) | ~100 MB |
 | RAM (private) | ~85 MB |
 | CPU | ~0% when idle; it only wakes on window events, input and animations |
-| Executable | ~1.3 MB |
+| Executable | ~2.3 MB |
 
 Most of that memory isn't gromak itself. The bar, launcher and popups are
 drawn on the GPU with Direct2D, which loads your graphics driver (often 40 MB
@@ -192,11 +198,20 @@ blur = true             # frosted-glass backdrop (full style)
 height = 26
 opacity = 0.55       # background opacity, 0.0 - 1.0
 corner_radius = 10
-font = "Segoe UI Variable Text"
+font = "Goeist"           # built in; or an installed family / a .ttf file
+font_mono = "Goeist Mono" # numbers: clock, percentages
 font_size = 12
+modules_left = ["workspaces"]
+modules_center = ["window"]
+modules_right = ["cpu", "memory", "volume", "network", "bluetooth", "clock", "custom/weather"]
 background = "#181926"
 foreground = "#cad3f5"
 accent = "#8aadf4"
+
+[bar.custom.weather]       # shown by "custom/weather"
+exec = "curl -s \"wttr.in/?format=%c%t\""
+interval = 900
+on_click = "start https://wttr.in"
 
 [[rules]]
 exe = "Spotify.exe"

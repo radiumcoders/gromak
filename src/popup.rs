@@ -1,5 +1,7 @@
 //! Small floating panels opened from the bar: a month calendar (click the
-//! date) and an analog + digital clock (click the time).
+//! date), an analog + digital clock (click the time), and the Wi-Fi,
+//! Bluetooth, system and sound panels (click their widgets; see
+//! [`crate::panel`]).
 //!
 //! Like the launcher, a popup is a per-pixel-alpha layered window drawn with
 //! Direct2D. It takes focus while open so that clicking anywhere else (or
@@ -8,6 +10,8 @@
 use crate::config::FontSource;
 use crate::gfx::{label, rgba, rounded, Factories, Surface};
 use crate::layout::Rect;
+use crate::panel::{self, Action, Which};
+use crate::status::{self, Request};
 use crate::theme::Palette;
 use crate::win::{self, wide};
 use std::cell::RefCell;
@@ -25,19 +29,39 @@ use windows::Win32::Graphics::DirectWrite::IDWriteTextFormat;
 use windows_numerics::Vector2;
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{VK_ESCAPE, VK_LEFT, VK_RIGHT};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+    ReleaseCapture, SetCapture, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT, VK_ESCAPE, VK_LEFT, VK_RIGHT,
+};
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
 const CLASS: &str = "gromak_popup";
 const TICK_TIMER: usize = 1;
 const ANIM_TIMER: usize = 2;
 const OPEN_ANIMATION: Duration = Duration::from_millis(180);
+const WM_MOUSELEAVE: u32 = 0x02A3;
 
 /// Which popup.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Calendar,
     Clock,
+    Network,
+    Bluetooth,
+    System,
+    Volume,
+}
+
+impl Kind {
+    /// The Wi-Fi or Bluetooth panel this is.
+    fn panel(self) -> Option<Which> {
+        match self {
+            Kind::Network => Some(Which::Network),
+            Kind::Bluetooth => Some(Which::Bluetooth),
+            Kind::System => Some(Which::System),
+            Kind::Volume => Some(Which::Volume),
+            _ => None,
+        }
+    }
 }
 
 /// Colours and metrics, from the theme and the monitor.
@@ -45,6 +69,8 @@ pub enum Kind {
 pub struct Style {
     pub palette: Palette,
     pub font: FontSource,
+    /// For numbers: the digital clock, percentages.
+    pub font_mono: FontSource,
     pub font_px: f32,
     pub scale: f32,
 }
@@ -121,6 +147,7 @@ struct Gfx {
     text: IDWriteTextFormat,
     small: IDWriteTextFormat,
     big: IDWriteTextFormat,
+    mono: IDWriteTextFormat,
 }
 
 struct Popup {
@@ -129,6 +156,10 @@ struct Popup {
     style: Option<Style>,
     /// Bottom-right corner the popup hangs from (screen pixels).
     anchor: (i32, i32),
+    /// The monitor the popup opens on; it stays inside.
+    bounds: Rect,
+    /// The volume slider being dragged: its track.
+    dragging: Option<panel::Area>,
     rect: Rect,
     surface: Option<Surface>,
     surface_size: (i32, i32),
@@ -139,6 +170,20 @@ struct Popup {
     /// Clickable areas (window coordinates): previous, next, title.
     hits: [(f32, f32, f32, f32); 3],
     anim_start: Option<Instant>,
+    /// Clickable areas of the Wi-Fi / Bluetooth panels (window coordinates).
+    actions: Vec<((f32, f32, f32, f32), Action)>,
+    /// Pointer position over the popup (window coordinates).
+    mouse: Option<(f32, f32)>,
+    tracking_mouse: bool,
+    /// The Wi-Fi password being typed: (network, text).
+    password: Option<(String, String)>,
+    /// The network the status thread last asked a password for, so that a
+    /// cancelled prompt does not reopen.
+    prompted: Option<String>,
+    /// First row shown in a panel's list.
+    scroll: usize,
+    /// [`status::generation`] when the panel was last drawn.
+    drawn: u64,
 }
 
 static OPEN: AtomicBool = AtomicBool::new(false);
@@ -200,6 +245,8 @@ pub fn init() {
             kind: Kind::Calendar,
             style: None,
             anchor: (0, 0),
+            bounds: Rect::default(),
+            dragging: None,
             rect: Rect::default(),
             surface: None,
             surface_size: (0, 0),
@@ -208,11 +255,18 @@ pub fn init() {
             month: t.wMonth as u32,
             hits: [(0.0, 0.0, 0.0, 0.0); 3],
             anim_start: None,
+            actions: Vec::new(),
+            mouse: None,
+            tracking_mouse: false,
+            password: None,
+            prompted: None,
+            scroll: 0,
+            drawn: 0,
         })
     });
 }
 
-/// Opens `kind` hanging below `anchor` (its top-right corner), or closes it
+/// Opens `kind` hanging below `anchor` (centred on it), or closes it
 /// if that popup is already open.
 pub fn toggle(kind: Kind, anchor: (i32, i32), style: Style) {
     let reopen_same = is_open() && with_state(|p| p.kind == kind).unwrap_or(false);
@@ -229,22 +283,36 @@ pub fn toggle(kind: Kind, anchor: (i32, i32), style: Style) {
         p.style = Some(style);
         p.kind = kind;
         p.anchor = anchor;
+        p.bounds = win::monitor_rect_at(anchor.0, anchor.1 - 1);
+        p.dragging = None;
         let t = win::local_time();
         p.year = t.wYear as i32;
         p.month = t.wMonth as u32;
         p.anim_start = Some(Instant::now());
+        p.mouse = None;
+        p.password = None;
+        p.prompted = None;
+        p.scroll = 0;
         p.hwnd
     }) else {
         return;
     };
+    if kind.panel().is_some() {
+        status::request(Request::Watch(true));
+    }
     OPEN.store(true, Ordering::Relaxed);
     render();
     unsafe {
         ShowWindow(hwnd as HWND, SW_SHOW);
         SetTimer(hwnd as HWND, ANIM_TIMER, 8, None);
-        if kind == Kind::Clock {
-            SetTimer(hwnd as HWND, TICK_TIMER, 250, None);
-        }
+        match kind {
+            Kind::Clock => SetTimer(hwnd as HWND, TICK_TIMER, 250, None),
+            // Picks up new status from the background thread.
+            Kind::Network | Kind::Bluetooth | Kind::System | Kind::Volume => {
+                SetTimer(hwnd as HWND, TICK_TIMER, 100, None)
+            }
+            Kind::Calendar => 0,
+        };
     }
     win::focus(hwnd);
 }
@@ -252,6 +320,9 @@ pub fn toggle(kind: Kind, anchor: (i32, i32), style: Style) {
 fn close() {
     if !OPEN.swap(false, Ordering::Relaxed) {
         return;
+    }
+    if with_state(|p| p.kind.panel().is_some()) == Some(true) {
+        status::request(Request::Watch(false));
     }
     let hwnd = HWND_POPUP.load(Ordering::Relaxed) as HWND;
     unsafe {
@@ -276,7 +347,67 @@ impl Popup {
         match self.kind {
             Kind::Calendar => ((7.0 * 38.0 + 32.0) * s, (56.0 + 30.0 + 6.0 * 34.0 + 18.0) * s),
             Kind::Clock => (260.0 * s, 320.0 * s),
+            // Sized by their content (see `draw`).
+            _ => (0.0, 0.0),
         }
+    }
+
+    /// Carries out a click on a Wi-Fi / Bluetooth panel element. Opening
+    /// Settings closes the popup, so that is left to the caller.
+    fn act(&mut self, action: &Action) {
+        match action {
+            Action::Radio { bluetooth, on } => status::request(Request::SetRadio { bluetooth: *bluetooth, on: *on }),
+            Action::Connect(ssid) => {
+                self.password = None;
+                status::request(Request::Connect { ssid: ssid.clone(), password: None });
+            }
+            Action::Disconnect => status::request(Request::Disconnect),
+            Action::SubmitPassword => self.submit_password(),
+            Action::Open(_) | Action::VolumeSlider => {}
+            Action::ToggleMute => {
+                crate::audio::toggle_mute();
+                crate::bar::refresh_all();
+            }
+        }
+    }
+
+    /// Sets the volume from the pointer's position along the slider.
+    fn slide_volume(&mut self, (l, _, r, _): panel::Area, x: f32) {
+        // The hit area reaches 10 px past each end of the track.
+        let pad = 10.0 * self.scale();
+        let level = (x - l - pad) / (r - l - 2.0 * pad).max(1.0);
+        crate::audio::set_level(level);
+        crate::bar::refresh_all();
+    }
+
+    fn submit_password(&mut self) {
+        if let Some((ssid, text)) = self.password.take() {
+            if !text.is_empty() {
+                status::request(Request::Connect { ssid, password: Some(text) });
+            }
+        }
+    }
+
+    /// Typing into the password field. Returns whether anything changed.
+    fn on_char(&mut self, ch: u16) -> bool {
+        const BACKSPACE: u16 = 0x08;
+        const ENTER: u16 = 0x0D;
+        const PASTE: u16 = 0x16; // Ctrl+V
+        let Some((_, text)) = self.password.as_mut() else { return false };
+        match ch {
+            BACKSPACE => {
+                text.pop();
+            }
+            ENTER => self.submit_password(),
+            PASTE => text.push_str(win::clipboard_text().unwrap_or_default().trim_end_matches(['\r', '\n'])),
+            c if c >= 0x20 && c != 0x7F => {
+                if let Some(Ok(c)) = char::decode_utf16([c]).next() {
+                    text.push(c);
+                }
+            }
+            _ => return false,
+        }
+        true
     }
 
     fn change_month(&mut self, delta: i32) {
@@ -304,8 +435,19 @@ unsafe extern "system" fn popup_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARA
             0
         }
         WM_KEYDOWN => {
+            let calendar = with_state(|p| p.kind == Kind::Calendar) == Some(true);
             match wp as u16 {
-                VK_ESCAPE => close(),
+                // Escape first cancels a password prompt, then closes.
+                VK_ESCAPE => {
+                    let cancelled = with_state(|p| p.password.take().is_some()) == Some(true);
+                    if cancelled {
+                        status::request(Request::CancelPassword);
+                        render();
+                    } else {
+                        close();
+                    }
+                }
+                VK_LEFT | VK_RIGHT if !calendar => {}
                 VK_LEFT => {
                     with_state(|p| p.change_month(-1));
                     render();
@@ -318,11 +460,105 @@ unsafe extern "system" fn popup_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARA
             }
             0
         }
+        WM_CHAR => {
+            if with_state(|p| p.on_char(wp as u16)) == Some(true) {
+                render();
+            }
+            0
+        }
         WM_MOUSEWHEEL => {
             let delta = ((wp >> 16) & 0xFFFF) as u16 as i16;
-            if with_state(|p| p.kind == Kind::Calendar) == Some(true) {
-                with_state(|p| p.change_month(if delta > 0 { -1 } else { 1 }));
+            let step: isize = if delta > 0 { -1 } else { 1 };
+            let changed = with_state(|p| match p.kind {
+                Kind::Calendar => {
+                    p.change_month(step as i32);
+                    true
+                }
+                Kind::Network | Kind::Bluetooth => {
+                    let old = p.scroll;
+                    p.scroll = p.scroll.saturating_add_signed(step);
+                    // `draw` clamps it to the list; clamp here too so that
+                    // scrolling past the end does not build up.
+                    let rows =
+                        p.kind.panel().map_or(0, |w| panel::content(w, status::current(), &status::details()).rows());
+                    p.scroll = p.scroll.min(rows.saturating_sub(panel::MAX_ROWS));
+                    p.scroll != old
+                }
+                // Scrolling over the sound panel changes the volume.
+                Kind::Volume => {
+                    crate::audio::change(if step < 0 { 0.02 } else { -0.02 });
+                    crate::bar::refresh_all();
+                    true
+                }
+                Kind::Clock | Kind::System => false,
+            });
+            if changed == Some(true) {
                 render();
+            }
+            0
+        }
+        WM_MOUSEMOVE => {
+            let point = ((lp & 0xFFFF) as i16 as f32, ((lp >> 16) & 0xFFFF) as i16 as f32);
+            let changed = with_state(|p| {
+                if !p.tracking_mouse {
+                    let mut tme = TRACKMOUSEEVENT {
+                        cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
+                        dwFlags: TME_LEAVE,
+                        hwndTrack: hwnd,
+                        dwHoverTime: 0,
+                    };
+                    TrackMouseEvent(&mut tme);
+                    p.tracking_mouse = true;
+                }
+                let before = panel::hover_at(&p.actions, p.mouse);
+                p.mouse = Some(point);
+                if let Some(track) = p.dragging {
+                    p.slide_volume(track, point.0);
+                    return true;
+                }
+                p.kind.panel().is_some() && panel::hover_at(&p.actions, p.mouse) != before
+            });
+            if changed == Some(true) {
+                render();
+            }
+            0
+        }
+        WM_MOUSELEAVE => {
+            let changed = with_state(|p| {
+                p.tracking_mouse = false;
+                p.mouse.take().is_some() && p.kind.panel().is_some()
+            });
+            if changed == Some(true) {
+                render();
+            }
+            0
+        }
+        WM_LBUTTONDOWN if with_state(|p| p.kind.panel().is_some()) == Some(true) => {
+            let point = ((lp & 0xFFFF) as i16 as f32, ((lp >> 16) & 0xFFFF) as i16 as f32);
+            let action = with_state(|p| {
+                let (area, action) = panel::action_at(&p.actions, point)?;
+                if action == Action::VolumeSlider {
+                    p.dragging = Some(area);
+                    SetCapture(hwnd);
+                    p.slide_volume(area, point.0);
+                }
+                p.act(&action);
+                Some(action)
+            })
+            .flatten();
+            match action {
+                Some(Action::Open(uri)) => {
+                    close();
+                    win::shell_open(uri);
+                }
+                Some(_) => render(),
+                None => {}
+            }
+            0
+        }
+        WM_LBUTTONUP => {
+            if with_state(|p| p.dragging.take().is_some()) == Some(true) {
+                ReleaseCapture();
             }
             0
         }
@@ -352,7 +588,14 @@ unsafe extern "system" fn popup_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARA
             0
         }
         WM_TIMER if wp == TICK_TIMER => {
-            render();
+            // The panels redraw only when the status thread has news.
+            // The Wi-Fi and Bluetooth panels redraw when the status thread has
+            // news; the others show live values (graphs, progress) and redraw.
+            let stale =
+                with_state(|p| !matches!(p.kind, Kind::Network | Kind::Bluetooth) || p.drawn != status::generation());
+            if stale == Some(true) {
+                render();
+            }
             0
         }
         WM_TIMER if wp == ANIM_TIMER => {
@@ -406,7 +649,8 @@ unsafe fn create_gfx(f: &Factories, style: &Style) -> windows::core::Result<Gfx>
         title: crate::gfx::font_format(f, &style.font, 650, px * 1.25)?,
         text: crate::gfx::font_format(f, &style.font, 450, px * 1.05)?,
         small: crate::gfx::font_format(f, &style.font, 500, px * 0.9)?,
-        big: crate::gfx::font_format(f, &style.font, 650, px * 2.4)?,
+        big: crate::gfx::font_format(f, &style.font_mono, 600, px * 2.4)?,
+        mono: crate::gfx::font_format(f, &style.font_mono, 500, px * 1.05)?,
     })
 }
 
@@ -415,10 +659,30 @@ impl Popup {
         let Some(style) = self.style.clone() else { return Ok(()) };
         let s = style.scale;
         let m = self.margin();
-        let (w, h) = self.size();
-        // Hang below the anchor, right-aligned to it.
+        let content = self.kind.panel().map(|which| {
+            self.drawn = status::generation();
+            let details = status::details();
+            // Open the password field when the status thread asks for it.
+            if details.needs_password != self.prompted {
+                self.prompted = details.needs_password.clone();
+                if let Some(ssid) = &details.needs_password {
+                    self.password = Some((ssid.clone(), String::new()));
+                }
+            }
+            panel::content(which, status::current(), &details)
+        });
+        let (w, h) = match &content {
+            Some(c) => panel::size(c, self.password.is_some(), s),
+            None => self.size(),
+        };
+        // Hang below the anchor, centred on it, but inside the monitor.
+        let gap = (8.0 * s) as i32;
+        let mut panel_x = self.anchor.0 - (w / 2.0) as i32;
+        if self.bounds.w > 0 {
+            panel_x = panel_x.min(self.bounds.right() - gap - w as i32).max(self.bounds.x + gap);
+        }
         self.rect = Rect::new(
-            self.anchor.0 - (w + m) as i32,
+            panel_x - m as i32,
             self.anchor.1 - m as i32 + (6.0 * s) as i32,
             (w + 2.0 * m) as i32,
             (h + 2.0 * m) as i32,
@@ -439,22 +703,12 @@ impl Popup {
         gfx.target.Clear(Some(&rgba(0, 0.0)));
         let target = &gfx.target;
         let brush = &gfx.brush;
-        let radius = (14.0 * s).round();
+        let radius = (10.0 * s).round();
 
-        // Shadow and panel, like the launcher.
-        for i in 0..12 {
-            let grow = m * 0.85 * (i + 1) as f32 / 12.0;
-            brush.SetColor(&rgba(0, 0.03));
-            target.FillRoundedRectangle(
-                &rounded(m - grow, m - grow + 5.0 * s, m + w + grow, m + h + grow + 5.0 * s, radius + grow),
-                brush,
-            );
-        }
-        let panel = rounded(m + 0.5, m + 0.5, m + w - 0.5, m + h - 0.5, radius);
+        // A flat panel with a hairline border.
         brush.SetColor(&rgba(p.background, 1.0));
-        target.FillRoundedRectangle(&panel, brush);
-        brush.SetColor(&rgba(p.foreground, 0.08));
-        target.DrawRoundedRectangle(&panel, brush, 1.0, None);
+        target.FillRoundedRectangle(&rounded(m, m, m + w, m + h, radius), brush);
+        crate::gfx::border(target, brush, (m, m, m + w, m + h), radius, rgba(p.foreground, 0.12));
 
         let text_at = |format: &IDWriteTextFormat, text: &str, cx: f32, cy: f32, hh: f32, color| {
             if let Some(l) = label(f, format, text, w, hh) {
@@ -469,7 +723,22 @@ impl Popup {
         };
         let now = win::local_time();
 
+        if let Some(content) = &content {
+            let canvas = panel::Canvas {
+                f,
+                target,
+                brush,
+                round: &gfx.round_cap,
+                fonts: panel::Fonts { title: &gfx.title, text: &gfx.text, small: &gfx.small, mono: &gfx.mono },
+                palette: *p,
+                scale: s,
+            };
+            let view = panel::View { password: self.password.as_ref(), mouse: self.mouse, scroll: self.scroll };
+            self.actions = panel::draw(&canvas, content, &view, m, m);
+        }
+
         match self.kind {
+            Kind::Network | Kind::Bluetooth | Kind::System | Kind::Volume => {}
             Kind::Calendar => {
                 let pad = 16.0 * s;
                 let cell = 38.0 * s;
@@ -509,10 +778,7 @@ impl Popup {
                     let color = if today {
                         let r = row * 0.42;
                         brush.SetColor(&rgba(p.accent, 1.0));
-                        target.FillEllipse(
-                            &D2D1_ELLIPSE { point: Vector2 { X: cx, Y: cy }, radiusX: r, radiusY: r },
-                            brush,
-                        );
+                        target.FillRoundedRectangle(&rounded(cx - r, cy - r, cx + r, cy + r, r), brush);
                         rgba(p.background, 1.0)
                     } else if in_month {
                         rgba(p.foreground, if col >= 5.0 { 0.6 } else { 0.9 })

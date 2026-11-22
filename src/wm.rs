@@ -1159,16 +1159,25 @@ impl Wm {
     pub fn on_bar(&mut self, kind: usize, value: isize) {
         let (x, y) = win::cursor_pos();
         self.active_monitor = self.monitor_index(win::monitor_at(x, y));
-        if kind == crate::BAR_CALENDAR || kind == crate::BAR_CLOCK {
+        let popup = match kind {
+            crate::BAR_CALENDAR => Some(popup::Kind::Calendar),
+            crate::BAR_CLOCK => Some(popup::Kind::Clock),
+            crate::BAR_NETWORK => Some(popup::Kind::Network),
+            crate::BAR_BLUETOOTH => Some(popup::Kind::Bluetooth),
+            crate::BAR_SYSTEM => Some(popup::Kind::System),
+            crate::BAR_VOLUME => Some(popup::Kind::Volume),
+            _ => None,
+        };
+        if let Some(which) = popup {
             let anchor = ((value & 0xFFFF_FFFF) as u32 as i32, (value >> 32) as i32);
             let mi = self.active_monitor;
             let style = popup::Style {
                 palette: self.palette,
                 font: self.cfg.bar.font_source(),
+                font_mono: self.cfg.bar.mono_source(),
                 font_px: self.cfg.bar.font_size as f32 * self.monitors[mi].info.scale,
                 scale: self.monitors[mi].info.scale,
             };
-            let which = if kind == crate::BAR_CALENDAR { popup::Kind::Calendar } else { popup::Kind::Clock };
             popup::toggle(which, anchor, style);
             return;
         }

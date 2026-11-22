@@ -11,6 +11,7 @@ use std::cell::RefCell;
 use std::ffi::c_void;
 use std::mem::{size_of, zeroed};
 use std::ptr::null_mut;
+use std::sync::atomic::{AtomicBool, Ordering};
 use windows::core::PCWSTR;
 use windows::Win32::Graphics::Direct2D::Common::{
     D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_COLOR_F, D2D1_PIXEL_FORMAT, D2D_RECT_F,
@@ -69,6 +70,7 @@ pub fn init() {
 /// gone: left to the thread-local destructor, they would be released during
 /// process teardown, after the DLLs behind them have been unloaded.
 pub fn shutdown() {
+    BUILTIN.with(|b| b.borrow_mut().take());
     FACTORIES.with(|f| f.borrow_mut().take());
 }
 
@@ -135,6 +137,18 @@ pub unsafe fn render_target(f: &Factories) -> windows::core::Result<(ID2D1DCRend
     let target = f.d2d.CreateDCRenderTarget(&props)?;
     target.SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
     target.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+    // Crisper text: natural, symmetric rendering with full contrast.
+    if let Ok(defaults) = f.dwrite.CreateRenderingParams() {
+        if let Ok(params) = f.dwrite.CreateCustomRenderingParams(
+            defaults.GetGamma(),
+            1.0,
+            0.0,
+            windows::Win32::Graphics::DirectWrite::DWRITE_PIXEL_GEOMETRY_FLAT,
+            windows::Win32::Graphics::DirectWrite::DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC,
+        ) {
+            target.SetTextRenderingParams(&params);
+        }
+    }
     let brush = target.CreateSolidColorBrush(&rgba(0, 1.0), None)?;
     Ok((target, brush))
 }
@@ -180,9 +194,58 @@ pub fn rgba(c: u32, a: f32) -> D2D1_COLOR_F {
     }
 }
 
+/// Square corners, snapped to whole pixels (`corner_radius = 0`, the
+/// default), or rounded ones.
+static SHARP: AtomicBool = AtomicBool::new(true);
+
+/// Turns sharp corners on or off for every surface gromak draws.
+pub fn set_sharp(sharp: bool) {
+    SHARP.store(sharp, Ordering::Relaxed);
+}
+
+pub fn sharp() -> bool {
+    SHARP.load(Ordering::Relaxed)
+}
+
+/// A surface: square and snapped to whole pixels when corners are sharp,
+/// otherwise rounded with `radius`.
 pub fn rounded(l: f32, t: f32, r: f32, b: f32, radius: f32) -> D2D1_ROUNDED_RECT {
+    if sharp() {
+        return D2D1_ROUNDED_RECT {
+            rect: D2D_RECT_F { left: l.round(), top: t.round(), right: r.round(), bottom: b.round() },
+            radiusX: 0.0,
+            radiusY: 0.0,
+        };
+    }
+    shape(l, t, r, b, radius)
+}
+
+/// A rounded rectangle that stays rounded (parts of icons).
+pub fn shape(l: f32, t: f32, r: f32, b: f32, radius: f32) -> D2D1_ROUNDED_RECT {
     let radius = radius.min((b - t) / 2.0).min((r - l) / 2.0);
     D2D1_ROUNDED_RECT { rect: D2D_RECT_F { left: l, top: t, right: r, bottom: b }, radiusX: radius, radiusY: radius }
+}
+
+/// A 1 px border just inside `(l, t, r, b)`: exact pixel lines when corners
+/// are sharp, a rounded outline otherwise.
+pub unsafe fn border(
+    target: &ID2D1DCRenderTarget,
+    brush: &ID2D1SolidColorBrush,
+    (l, t, r, b): (f32, f32, f32, f32),
+    radius: f32,
+    color: D2D1_COLOR_F,
+) {
+    brush.SetColor(&color);
+    if sharp() {
+        let (l, t, r, b) = (l.round(), t.round(), r.round(), b.round());
+        for (x0, y0, x1, y1) in
+            [(l, t, r, t + 1.0), (l, b - 1.0, r, b), (l, t + 1.0, l + 1.0, b - 1.0), (r - 1.0, t + 1.0, r, b - 1.0)]
+        {
+            target.FillRectangle(&D2D_RECT_F { left: x0, top: y0, right: x1, bottom: y1 }, brush);
+        }
+    } else {
+        target.DrawRoundedRectangle(&shape(l + 0.5, t + 0.5, r - 0.5, b - 0.5, radius), brush, 1.0, None);
+    }
 }
 
 /// A single-line, vertically centred text format that trims with "…".
@@ -310,8 +373,86 @@ pub unsafe fn file_bitmap(f: &Factories, target: &ID2D1DCRenderTarget, path: &st
     d2d_bitmap(wic, target, &frame.into())
 }
 
-/// A text format for a font setting: an installed family, or a font file
-/// (falling back to Segoe UI if the file cannot be loaded).
+/// Goeist and Goeist Mono, built into gromak (SIL Open Font License, see
+/// `assets/fonts/OFL.txt`), so the default look needs no installed fonts.
+static BUILTIN_FONTS: [(&str, &[u8]); 2] = [
+    ("goeist", include_bytes!("../assets/fonts/Goeist-Variable.ttf")),
+    ("goeist mono", include_bytes!("../assets/fonts/GoeistMono-Variable.ttf")),
+];
+
+/// (lower-case name, collection, family name as UTF-16).
+type BuiltinFont = (String, windows::Win32::Graphics::DirectWrite::IDWriteFontCollection1, Vec<u16>);
+
+thread_local! {
+    /// The built-in fonts as font collections, by lower-case family name.
+    static BUILTIN: RefCell<Option<Vec<BuiltinFont>>> =
+        const { RefCell::new(None) };
+}
+
+/// Loads the built-in fonts from memory (needs Windows 10 1703+).
+unsafe fn builtin_collections(f: &Factories) -> windows::core::Result<Vec<BuiltinFont>> {
+    use windows::core::Interface;
+    use windows::Win32::Graphics::DirectWrite::IDWriteFactory5;
+    let factory: IDWriteFactory5 = f.dwrite.cast()?;
+    let loader = factory.CreateInMemoryFontFileLoader()?;
+    factory.RegisterFontFileLoader(&loader)?;
+    let mut out = Vec::new();
+    for (name, data) in BUILTIN_FONTS {
+        let file = loader.CreateInMemoryFontFileReference(&factory, data.as_ptr().cast(), data.len() as u32, None)?;
+        let builder = factory.CreateFontSetBuilder()?;
+        builder.AddFontFile(&file)?;
+        let collection = factory.CreateFontCollectionFromFontSet(&builder.CreateFontSet()?)?;
+        let names = collection.GetFontFamily(0)?.GetFamilyNames()?;
+        let mut family = vec![0u16; names.GetStringLength(0)? as usize + 1];
+        names.GetString(0, &mut family)?;
+        out.push((name.to_string(), collection, family));
+    }
+    Ok(out)
+}
+
+/// A text format for a built-in font, if `family` names one.
+unsafe fn builtin_format(f: &Factories, family: &str, weight: i32, px: f32) -> Option<IDWriteTextFormat> {
+    let wanted = family.trim().to_lowercase();
+    if !BUILTIN_FONTS.iter().any(|(name, _)| *name == wanted) {
+        return None;
+    }
+    BUILTIN.with(|cell| {
+        let mut cell = cell.borrow_mut();
+        if cell.is_none() {
+            match builtin_collections(f) {
+                Ok(fonts) => *cell = Some(fonts),
+                Err(e) => {
+                    warn!("could not load the built-in fonts: {e}");
+                    *cell = Some(Vec::new());
+                }
+            }
+        }
+        let (_, collection, family) = cell.as_ref()?.iter().find(|(name, _, _)| *name == wanted)?;
+        let format = f
+            .dwrite
+            .CreateTextFormat(
+                PCWSTR(family.as_ptr()),
+                collection,
+                DWRITE_FONT_WEIGHT(weight),
+                DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_FONT_STRETCH_NORMAL,
+                px,
+                windows::core::w!("en-us"),
+            )
+            .ok()?;
+        format.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER).ok()?;
+        format.SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP).ok()?;
+        let ellipsis = f.dwrite.CreateEllipsisTrimmingSign(&format).ok()?;
+        let trimming =
+            DWRITE_TRIMMING { granularity: DWRITE_TRIMMING_GRANULARITY_CHARACTER, delimiter: 0, delimiterCount: 0 };
+        format.SetTrimming(&trimming, &ellipsis).ok()?;
+        Some(format)
+    })
+}
+
+/// A text format for a font setting: a built-in font (Goeist, Goeist Mono),
+/// an installed family, or a font file (falling back to Segoe UI if the file
+/// cannot be loaded).
 pub unsafe fn font_format(
     f: &Factories,
     font: &crate::config::FontSource,
@@ -319,7 +460,10 @@ pub unsafe fn font_format(
     px: f32,
 ) -> windows::core::Result<IDWriteTextFormat> {
     match font {
-        crate::config::FontSource::Family(family) => text_format(f, family, weight, px),
+        crate::config::FontSource::Family(family) => match builtin_format(f, family, weight, px) {
+            Some(format) => Ok(format),
+            None => text_format(f, family, weight, px),
+        },
         crate::config::FontSource::File(path) => text_format_from_file(f, path, weight, px).or_else(|e| {
             warn!("could not load font {}: {e}", path.display());
             text_format(f, "Segoe UI Variable Text", weight, px)

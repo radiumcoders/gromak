@@ -22,7 +22,7 @@ ordinary `SetWindowPos` / `ShowWindow` calls.
 | `src/wm.rs` | The window manager state machine: monitors, workspaces, managed windows, dispatchers, and event handlers. Also tracks hidden windows on disk. |
 | `src/layout.rs` | Pure geometry: `Rect`, the dwindle tree, and directional neighbour search. No Win32, fully unit-tested. |
 | `src/config.rs` | TOML schema, defaults, validation, and parsing of hotkeys and dispatcher commands. No Win32, fully unit-tested. |
-| `src/bar.rs` | The per-monitor floating bar: a layered window drawn with Direct2D and DirectWrite. |
+| `src/bar.rs` | The per-monitor bar: widgets (modules) laid out in three groups, drawn into a layered window with Direct2D and DirectWrite. |
 | `src/keyboard.rs` | The low-level keyboard hook thread for Win-key bindings. |
 | `src/mouse.rs` | The low-level mouse hook thread that reports pointer movement for focus follows mouse. |
 | `src/launcher.rs` | The app launcher: app index, search panel window and launching. |
@@ -32,6 +32,12 @@ ordinary `SetWindowPos` / `ShowWindow` calls.
 | `src/orc.rs` | The orc.pictures catalog client: fetching, validation, search and the download cache. |
 | `src/power.rs` | Power and session actions for the launcher (lock, sleep, hibernate, sign out, restart, shut down). |
 | `src/gfx.rs` | Shared Direct2D / DirectWrite / WIC plumbing for the bar and the launcher. |
+| `src/status.rs` | Network and Bluetooth status and actions (scan, connect, switch radios), on a background thread through WinRT. |
+| `src/panel.rs` | The widget panels (Wi-Fi, Bluetooth, system, sound): what they show, layout and drawing. |
+| `src/icons.rs` | Vector icons for the bar and panels (Wi-Fi, Ethernet, Bluetooth, usage rings, speaker, padlock). |
+| `src/sys.rs` | CPU and memory usage sampling and history. |
+| `src/audio.rs` | Default speaker volume and mute through Core Audio. |
+| `src/custom.rs` | `custom/*` widgets: run their commands on background threads and keep the output. |
 | `src/theme.rs` | Derives colour palettes from the wallpaper or accent colour, and detects changes. |
 | `src/win.rs` | Thin wrappers over the Win32 / DWM APIs, plus the "is this a normal app window?" heuristic. |
 | `src/log.rs` | File and stderr logger. |
@@ -231,5 +237,44 @@ drawn with Direct2D, through a DC render target bound to a 32-bit DIB, and
 DirectWrite. The frame is then pushed to the screen in one call. Fully
 transparent pixels are click-through, so only the islands receive mouse input.
 App icons are converted from `HICON` through WIC to keep their alpha channel.
+Which widgets the bar shows, and where, comes from `modules_left`,
+`modules_center` and `modules_right`. Each frame measures the widgets of the
+two sides first and gives the centre group (usually the window title) the
+room left between them. On a one-second timer each bar gathers the live data
+its widgets show (time, network status, CPU and memory, volume, custom
+outputs) and redraws only if that changed. CPU and memory are sampled on the
+main thread (`GetSystemTimes`, `GlobalMemoryStatusEx`, cached for a second),
+volume comes from Core Audio, and each `custom/*` widget runs its command on
+its own thread, which stops when a reload changes the widgets.
+
 The bar redraws only when its state changes, the hover changes, a notice
-expires, or the clock's minute changes.
+expires, the live data changes.
+
+Text uses the built-in Goeist fonts unless the config names other ones.
+They are embedded with `include_bytes!` and loaded through DirectWrite's
+in-memory font loader into private font collections, so they are never
+installed system-wide.
+
+That status comes from `src/status.rs`. A background thread asks the WinRT
+APIs every 3 seconds: `Windows.Devices.Radios` for whether Wi-Fi and Bluetooth
+are on, `Windows.Networking.Connectivity` for the connection type, internet
+access and Wi-Fi signal bars, and `Windows.Devices.Enumeration` for connected
+Bluetooth devices (classic and Low Energy). A poll takes about 25 ms, which is
+why it never runs on the main thread. The thread only starts when a bar shows
+one of the icons. Each bar compares the latest result with what it last drew
+on its one-second clock timer. The icons (`src/icons.rs`) are Direct2D paths rather
+than font glyphs, so they look the same with any bar font.
+
+Clicking a widget opens its panel in the popup window
+(`src/popup.rs` hosts it, `src/panel.rs` draws it). While a panel is open the
+status thread also lists the Wi-Fi networks in range (`Windows.Devices.WiFi`,
+rescanning every 12 seconds) and the paired Bluetooth devices, and bumps a
+generation counter that the popup checks on a 100 ms timer. Clicks become
+requests sent over a channel to the status thread, which switches radios,
+joins or leaves networks, and reports back through the same snapshot. Joining
+a secured network first tries its saved profile; if that fails, the panel asks
+for the password. Recent Windows 11 builds only let apps see the networks in
+range when location services are on. Without them, the panel shows the
+connected network (from its connection profile) and a button to the location
+settings. Windows has no public API for connecting a paired Bluetooth device,
+so the Bluetooth panel lists devices but leaves connecting to Settings.

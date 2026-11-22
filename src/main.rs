@@ -10,20 +10,26 @@
 
 #[macro_use]
 mod log;
+mod audio;
 mod bar;
 mod calc;
 mod config;
+mod custom;
 mod emoji;
 mod fuzzy;
 mod gfx;
+mod icons;
 mod keyboard;
 mod launcher;
 mod layout;
 mod mouse;
 mod orc;
+mod panel;
 mod popup;
 mod power;
 mod snap;
+mod status;
+mod sys;
 mod theme;
 mod win;
 mod wm;
@@ -74,6 +80,14 @@ pub const BAR_SCROLL: usize = 1;
 pub const BAR_CALENDAR: usize = 2;
 /// The time was clicked: open the clock. `lparam` as for `BAR_CALENDAR`.
 pub const BAR_CLOCK: usize = 3;
+/// The network icon was clicked: open the Wi-Fi panel. `lparam` as for `BAR_CALENDAR`.
+pub const BAR_NETWORK: usize = 4;
+/// The Bluetooth icon was clicked: open the Bluetooth panel. `lparam` as for `BAR_CALENDAR`.
+pub const BAR_BLUETOOTH: usize = 5;
+/// The CPU or memory widget was clicked: open the system panel. `lparam` as for `BAR_CALENDAR`.
+pub const BAR_SYSTEM: usize = 6;
+/// The volume widget was clicked: open the sound panel. `lparam` as for `BAR_CALENDAR`.
+pub const BAR_VOLUME: usize = 7;
 
 /// The hidden control window that receives hotkeys and internal messages.
 static CTRL_HWND: AtomicIsize = AtomicIsize::new(0);

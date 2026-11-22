@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Bar widgets, placed like waybar's modules with `modules_left`,
+  `modules_center` and `modules_right`: `workspaces`, `window`, `clock`,
+  `network`, `bluetooth`, `cpu`, `memory`, `volume`, and `custom/<name>`
+  widgets that show a command's output (`[bar.custom.<name>]`: `exec`,
+  `interval`, `on_click`, `on_right_click`, `on_scroll_up`, `on_scroll_down`).
+- Panels for the widgets: Wi-Fi (switch it on or off, join a network, asking
+  for its password when needed, or leave it), Bluetooth (switch it on or off,
+  paired devices), system (live CPU and memory graphs) and sound (volume
+  slider, mute). Scroll over the volume widget to change the volume,
+  right-click it to mute.
+- Goeist and Goeist Mono are built in and are the default fonts (`font`,
+  `font_mono`).
+
+### Changed
+
+- The bar, its panels and the launcher are drawn flat: solid surfaces and
+  hairline borders, no shadows.
+- Sharp by default: `corner_radius = 0` gives square corners everywhere (bar,
+  panels, buttons, switches, launcher), with surfaces snapped to whole pixels
+  and exact 1 px borders. Text renders with higher contrast. Set
+  `corner_radius` above 0 for rounded corners.
+
 ## [0.1.0] - 2026-11-22
 
 ### Added

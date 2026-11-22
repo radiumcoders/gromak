@@ -53,9 +53,9 @@ active_border = "#8aadf4"
 inactive_border = "#363a4f"
 
 [bar]
-# `font` (below) is an installed family or a .ttf/.otf file in this folder,
-# e.g. font = "fonts/JetBrainsMono.ttf" after downloading JetBrains Mono from
-# https://github.com/JetBrains/JetBrainsMono/releases (fonts/variable/).
+# `font` (text) and `font_mono` (the clock, percentages and other numbers)
+# are built in: Goeist and Goeist Mono. Either can also be an installed
+# family or a .ttf/.otf file in this folder, e.g. font = "fonts/MyFont.ttf".
 enabled = true
 # "full": one strip across the top, edge to edge. "islands": floating rounded
 # islands with gaps around them.
@@ -64,7 +64,8 @@ style = "full"
 blur = true
 # Height in logical pixels (scaled with the monitor's DPI).
 height = 26
-font = "Segoe UI Variable Text"
+font = "Goeist"
+font_mono = "Goeist Mono"
 font_size = 12
 # Colours used when theme.source = "manual".
 background = "#181926"
@@ -74,11 +75,41 @@ muted = "#5b6078"
 # Opacity of the bar background (0.0 - 1.0). With blur on, keep it low so
 # the blur shows through.
 opacity = 0.55
-# Corner radius of the islands (islands style), in logical pixels.
-corner_radius = 8
+# 0: sharp, square corners everywhere (bar, panels, launcher), snapped to
+# whole pixels. Above 0: rounded corners; this is the islands' radius in
+# logical pixels.
+corner_radius = 0
 show_title = true
 show_clock = true
 clock_24h = true
+
+# Widgets, like waybar's modules: each list fills one part of the bar, in
+# order. Available:
+#   workspaces   the workspace pills (click or scroll to switch)
+#   window       the focused window's icon and title
+#   clock        date and time (click the date for a calendar, the time for a clock)
+#   network      Wi-Fi signal or Ethernet (click: Wi-Fi panel to switch Wi-Fi
+#                on/off and join networks; Windows only lists the networks
+#                nearby when location services are on)
+#   bluetooth    Bluetooth state (click: turn it on/off, see paired devices)
+#   cpu, memory  usage rings (click: live graphs)
+#   volume       speaker volume (scroll to change, right-click to mute,
+#                click for a slider)
+#   custom/NAME  the output of a command, set up in [bar.custom.NAME] below
+modules_left = ["workspaces"]
+modules_center = ["window"]
+modules_right = ["cpu", "memory", "volume", "network", "bluetooth", "clock"]
+
+# A custom widget runs `exec` every `interval` seconds (0 = once) and shows
+# the first line it prints (or "text" from JSON output). Add it to a module
+# list as "custom/NAME". For example, the weather:
+#
+# [bar.custom.weather]
+# exec = "curl -s \"wttr.in/?format=%c%t\""
+# interval = 900
+# on_click = "start https://wttr.in"
+#
+# on_click, on_right_click, on_scroll_up and on_scroll_down run commands too.
 
 [animations]
 # Windows glide to their new place when the layout changes, and switching

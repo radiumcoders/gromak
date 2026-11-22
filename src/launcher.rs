@@ -983,27 +983,12 @@ impl Launcher {
         gfx.target.Clear(Some(&rgba(0, 0.0)));
         let target = &gfx.target;
         let brush = &gfx.brush;
-        let radius = (16.0 * s).round();
+        let radius = (10.0 * s).round();
 
-        // Soft drop shadow: stacked, expanding, faint rounded rectangles.
-        let shadow_alpha = if light { 0.012 } else { 0.03 };
-        let steps = 14;
-        for i in 0..steps {
-            let grow = m * 0.85 * (i + 1) as f32 / steps as f32;
-            let dy = 6.0 * s;
-            brush.SetColor(&rgba(0, shadow_alpha));
-            target.FillRoundedRectangle(
-                &rounded(m - grow, m - grow + dy, m + w + grow, m + h + grow + dy, radius + grow),
-                brush,
-            );
-        }
-
-        // Panel.
-        let panel = rounded(m + 0.5, m + 0.5, m + w - 0.5, m + h - 0.5, radius);
+        // A flat panel with a hairline border.
         brush.SetColor(&rgba(p.background, 1.0));
-        target.FillRoundedRectangle(&panel, brush);
-        brush.SetColor(&rgba(p.foreground, if light { 0.10 } else { 0.08 }));
-        target.DrawRoundedRectangle(&panel, brush, 1.0, None);
+        target.FillRoundedRectangle(&rounded(m, m, m + w, m + h, radius), brush);
+        crate::gfx::border(target, brush, (m, m, m + w, m + h), radius, rgba(p.foreground, 0.12));
 
         // Search field: magnifier, query or placeholder, blinking caret.
         let center_y = m + pad + search_h / 2.0;

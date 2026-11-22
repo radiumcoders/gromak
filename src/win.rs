@@ -567,6 +567,11 @@ pub fn monitor_at(x: i32, y: i32) -> isize {
     unsafe { MonitorFromPoint(POINT { x, y }, MONITOR_DEFAULTTONEAREST) as isize }
 }
 
+/// The bounds of the monitor at (or nearest to) a point.
+pub fn monitor_rect_at(x: i32, y: i32) -> Rect {
+    monitor_info(monitor_at(x, y)).map_or_else(Rect::default, |m| m.rect)
+}
+
 pub fn local_time() -> SYSTEMTIME {
     let mut t: SYSTEMTIME = unsafe { zeroed() };
     unsafe { GetLocalTime(&mut t) };
@@ -604,6 +609,16 @@ pub fn run_command(command: &str) -> std::io::Result<()> {
         .creation_flags(CREATE_NO_WINDOW)
         .spawn()
         .map(|_| ())
+}
+
+/// Opens a file, folder or URI (`ms-settings:…`) with its default handler.
+pub fn shell_open(target: &str) {
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    let (verb, path) = (wide("open"), wide(target));
+    let result = unsafe { ShellExecuteW(null_mut(), verb.as_ptr(), path.as_ptr(), null(), null(), SW_SHOWNORMAL) };
+    if result as isize <= 32 {
+        warn!("could not open {target}: code {}", result as isize);
+    }
 }
 
 const CF_UNICODETEXT: u32 = 13;

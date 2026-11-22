@@ -126,6 +126,8 @@ pub struct Bar {
     pub blur: bool,
     pub height: i32,
     pub font: String,
+    /// Font for numbers: the clock, percentages, workspace numbers.
+    pub font_mono: String,
     pub font_size: i32,
     pub background: String,
     pub foreground: String,
@@ -135,9 +137,85 @@ pub struct Bar {
     pub opacity: f32,
     /// Corner radius of the islands in logical pixels.
     pub corner_radius: i32,
+    /// Legacy switches: `false` drops the `window` / `clock` module.
     pub show_title: bool,
     pub show_clock: bool,
     pub clock_24h: bool,
+    /// The widgets in each part of the bar, in order (see [`Module`]).
+    pub modules_left: Vec<String>,
+    pub modules_center: Vec<String>,
+    pub modules_right: Vec<String>,
+    /// Script widgets, used in the module lists as `custom/<name>`.
+    pub custom: BTreeMap<String, CustomModule>,
+}
+
+/// A widget that shows the output of a command, like waybar's `custom/*`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CustomModule {
+    /// Command line whose first line of output is shown. Output may also be
+    /// JSON like `{"text": "..."}`. Empty output hides the widget.
+    pub exec: String,
+    /// Seconds between runs; 0 runs the command once.
+    pub interval: u64,
+    /// Commands run on clicks and scrolling over the widget.
+    pub on_click: String,
+    pub on_right_click: String,
+    pub on_scroll_up: String,
+    pub on_scroll_down: String,
+}
+
+impl Default for CustomModule {
+    fn default() -> Self {
+        CustomModule {
+            exec: String::new(),
+            interval: 5,
+            on_click: String::new(),
+            on_right_click: String::new(),
+            on_scroll_up: String::new(),
+            on_scroll_down: String::new(),
+        }
+    }
+}
+
+/// A bar widget, named in `modules_left` / `modules_center` / `modules_right`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Module {
+    Workspaces,
+    /// The focused window's icon and title.
+    Window,
+    Clock,
+    Network,
+    Bluetooth,
+    Cpu,
+    Memory,
+    Volume,
+    /// `custom/<name>`: a [`CustomModule`].
+    Custom(String),
+}
+
+impl Module {
+    pub fn parse(name: &str) -> Result<Module, String> {
+        Ok(match name {
+            "workspaces" => Module::Workspaces,
+            "window" => Module::Window,
+            "clock" => Module::Clock,
+            "network" => Module::Network,
+            "bluetooth" => Module::Bluetooth,
+            "cpu" => Module::Cpu,
+            "memory" => Module::Memory,
+            "volume" => Module::Volume,
+            _ => match name.strip_prefix("custom/") {
+                Some(custom) if !custom.is_empty() => Module::Custom(custom.to_string()),
+                _ => {
+                    return Err(format!(
+                        "unknown module \"{name}\" (expected workspaces, window, clock, network, bluetooth, \
+                         cpu, memory, volume or custom/<name>)"
+                    ))
+                }
+            },
+        })
+    }
 }
 
 /// How the bar is drawn.
@@ -229,6 +307,44 @@ impl Bar {
     pub fn font_source(&self) -> FontSource {
         font_source(&self.font)
     }
+
+    /// The font for numbers (clock, percentages).
+    pub fn mono_source(&self) -> FontSource {
+        font_source(&self.font_mono)
+    }
+
+    /// The left, centre and right module lists. Invalid names are skipped
+    /// ([`parse`] reports them), as are `window` and `clock` when the
+    /// legacy `show_title` / `show_clock` switches are off.
+    pub fn modules(&self) -> [Vec<Module>; 3] {
+        [&self.modules_left, &self.modules_center, &self.modules_right].map(|names| {
+            names
+                .iter()
+                .filter_map(|n| Module::parse(n).ok())
+                .filter(|m| (self.show_title || *m != Module::Window) && (self.show_clock || *m != Module::Clock))
+                .collect()
+        })
+    }
+
+    fn validate_modules(&self) -> Result<(), String> {
+        let lists = [("left", &self.modules_left), ("center", &self.modules_center), ("right", &self.modules_right)];
+        for (side, names) in lists {
+            for name in names {
+                match Module::parse(name).map_err(|e| format!("bar.modules_{side}: {e}"))? {
+                    Module::Custom(custom) if !self.custom.contains_key(&custom) => {
+                        return Err(format!("bar.modules_{side}: \"{name}\" has no [bar.custom.{custom}] section"))
+                    }
+                    _ => {}
+                }
+            }
+        }
+        for (name, custom) in &self.custom {
+            if custom.exec.trim().is_empty() {
+                return Err(format!("bar.custom.{name}: exec is empty"));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Interprets a font setting: a `.ttf`/`.otf` path (relative paths are
@@ -289,17 +405,22 @@ impl Default for Bar {
             style: BarStyle::Full,
             blur: true,
             height: 26,
-            font: "Segoe UI Variable Text".into(),
+            font: "Goeist".into(),
+            font_mono: "Goeist Mono".into(),
             font_size: 12,
             background: "#181926".into(),
             foreground: "#cad3f5".into(),
             accent: "#8aadf4".into(),
             muted: "#5b6078".into(),
             opacity: 0.55,
-            corner_radius: 8,
+            corner_radius: 0,
             show_title: true,
             show_clock: true,
             clock_24h: true,
+            modules_left: vec!["workspaces".into()],
+            modules_center: vec!["window".into()],
+            modules_right: ["cpu", "memory", "volume", "network", "bluetooth", "clock"].map(String::from).to_vec(),
+            custom: BTreeMap::new(),
         }
     }
 }
@@ -418,6 +539,7 @@ pub fn parse(text: &str) -> Result<Config, String> {
             return Err(format!("{name}: expected a colour like \"#rrggbb\", got \"{value}\""));
         }
     }
+    cfg.bar.validate_modules()?;
     if !(0.0..=1.0).contains(&cfg.bar.opacity) {
         return Err(format!("bar.opacity must be between 0.0 and 1.0, got {}", cfg.bar.opacity));
     }
@@ -665,6 +787,21 @@ mod tests {
         let (binds, errors) = Config::default().compile_binds();
         assert!(errors.is_empty(), "{errors:?}");
         assert!(binds.len() > 40);
+    }
+
+    #[test]
+    fn modules_parse_and_validate() {
+        let cfg = parse(
+            "[bar]\nmodules_right = [\"cpu\", \"custom/weather\"]\n\
+             [bar.custom.weather]\nexec = \"curl wttr.in\"\ninterval = 600",
+        )
+        .unwrap();
+        assert_eq!(cfg.bar.modules()[2], vec![Module::Cpu, Module::Custom("weather".into())]);
+        assert_eq!(cfg.bar.custom["weather"].interval, 600);
+        assert!(parse("[bar]\nmodules_left = [\"nope\"]").unwrap_err().contains("unknown module"));
+        assert!(parse("[bar]\nmodules_left = [\"custom/x\"]").unwrap_err().contains("[bar.custom.x]"));
+        let hidden = parse("[bar]\nshow_clock = false").unwrap();
+        assert!(!hidden.bar.modules()[2].contains(&Module::Clock));
     }
 
     #[test]
