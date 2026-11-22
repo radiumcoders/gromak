@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-22
+
 ### Added
 
 - Bar widgets, placed like waybar's modules with `modules_left`,
@@ -20,6 +22,8 @@ All notable changes to this project are documented here. The format follows
   right-click it to mute.
 - Goeist and Goeist Mono are built in and are the default fonts (`font`,
   `font_mono`).
+- Workspaces 1-5 always show on the bar (`persistent_workspaces`); higher
+  ones appear while active or holding windows.
 
 ### Changed
 
@@ -34,7 +38,7 @@ All notable changes to this project are documented here. The format follows
   default), restored when gromak stops managing a window or exits.
 - Window shadows are turned off while gromak runs (`general.window_shadows =
   false`, the default). Like Snap, the original setting is recorded in
-  `%LOCALAPPDATA%gromak` and put back on exit, logoff, the next start
+  `%LOCALAPPDATA%\gromak\` and put back on exit, logoff, the next start
   after a crash, or `gromak --restore`.
 
 ## [0.1.0] - 2026-11-22
@@ -127,5 +131,6 @@ All notable changes to this project are documented here. The format follows
 - gromak crashed on exit (after its cleanup had run) because graphics
   objects were released during process teardown.
 
-[Unreleased]: https://github.com/radiumcoders/gromak/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/radiumcoders/gromak/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/radiumcoders/gromak/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/radiumcoders/gromak/releases/tag/v0.1.0
