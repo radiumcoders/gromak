@@ -4,6 +4,10 @@
 //! receives global hotkeys, WinEvent hooks and the keyboard hook thread post
 //! events to it, and the message loop below feeds them into [`wm::Wm`].
 
+// A GUI program in release builds: no console window when started from the
+// Start menu or at sign-in.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 #[macro_use]
 mod log;
 mod bar;
@@ -28,7 +32,9 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr::{null, null_mut};
 use std::sync::atomic::{AtomicIsize, Ordering};
 use windows_sys::Win32::Foundation::{GetLastError, BOOL, ERROR_ALREADY_EXISTS, HWND, LPARAM, LRESULT, WPARAM};
-use windows_sys::Win32::System::Console::{FreeConsole, GetConsoleProcessList, SetConsoleCtrlHandler};
+use windows_sys::Win32::System::Console::{
+    AttachConsole, FreeConsole, GetConsoleProcessList, SetConsoleCtrlHandler, ATTACH_PARENT_PROCESS,
+};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::CreateMutexW;
 use windows_sys::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
@@ -100,6 +106,7 @@ USAGE:
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if !args.is_empty() {
+        attach_parent_console();
         std::process::exit(run_cli(&args));
     }
     detach_own_console();
@@ -235,14 +242,24 @@ fn quit_running() -> i32 {
     1
 }
 
-/// When started from Explorer or autostart, Windows creates a console
-/// window just for us; release it. When started from a terminal, keep it so
-/// the log streams there.
+/// Release builds are GUI programs, so starting gromak from the Start menu
+/// or at sign-in never flashes a console; they simply have none (0 below).
+/// Debug builds are console programs: started from Explorer, Windows creates
+/// a console just for us (1), so release it; started from a terminal, keep
+/// it so the log streams there.
 fn detach_own_console() {
     let mut pids = [0u32; 2];
-    if unsafe { GetConsoleProcessList(pids.as_mut_ptr(), pids.len() as u32) } == 1 {
+    if unsafe { GetConsoleProcessList(pids.as_mut_ptr(), pids.len() as u32) } <= 1 {
         unsafe { FreeConsole() };
         log::disable_stderr();
+    }
+}
+
+/// Command-line flags print results: in a release (GUI) build, borrow the
+/// console of the terminal that started us, if any.
+fn attach_parent_console() {
+    if cfg!(not(debug_assertions)) {
+        unsafe { AttachConsole(ATTACH_PARENT_PROCESS) };
     }
 }
 

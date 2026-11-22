@@ -354,8 +354,9 @@ gromak --version
 gromak --help
 ```
 
-The log is written to `%LOCALAPPDATA%\gromak\gromak.log`. When you start
-gromak from a terminal, the log also streams there.
+The log is written to `%LOCALAPPDATA%\gromak\gromak.log`. Release builds are
+windowed apps with no console. A debug build (`cargo run`) also streams the
+log to the terminal.
 
 ## Compatibility with other apps
 

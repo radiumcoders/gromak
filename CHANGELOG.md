@@ -66,6 +66,8 @@ All notable changes to this project are documented here. The format follows
   Snap Layouts, Snap Assist) is turned off while gromak runs and restored
   when it exits, logs off, or the next start after a crash.
 - `gromak --quit` asks the running instance to exit cleanly.
+- Release builds are windowed apps: no console window flashes when gromak
+  starts from the Start menu or at sign-in.
 
 ### Fixed
 
