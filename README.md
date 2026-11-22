@@ -80,6 +80,33 @@ use, so the launcher opens instantly.
 
 ## Install
 
+### Installer (recommended)
+
+Download `gromak-<version>-setup.exe` from the
+[latest release](https://github.com/radiumcoders/gromak/releases/latest) and
+run it. It installs for your user only (no administrator prompt) and:
+
+- adds **gromak** to the Start menu;
+- can start gromak when you sign in (ticked by default). Turn this on or off
+  later in Task Manager → Startup apps;
+- registers an uninstaller under Settings → Apps.
+
+Running a newer installer upgrades in place and keeps your choices.
+Uninstalling quits gromak cleanly first and leaves your config in
+`%USERPROFILE%\.config\gromak` alone.
+
+> The builds aren't code-signed yet, so Windows SmartScreen may say
+> "Windows protected your PC". Click **More info → Run anyway**. Each
+> release lists SHA-256 checksums if you want to verify the download.
+
+### Portable
+
+Download `gromak-<version>-x64.exe` from the same release, put it anywhere,
+and run it. To start it at sign-in, press `Win+R`, run `shell:startup`, and
+put a shortcut to it in that folder.
+
+### From source
+
 ```powershell
 git clone https://github.com/radiumcoders/gromak
 cd gromak
@@ -87,13 +114,11 @@ cargo build --release
 .\target\release\gromak.exe
 ```
 
-Copy `target\release\gromak.exe` anywhere you like (for example
-`%LOCALAPPDATA%\Programs\gromak\`).
-
-### Start with Windows
-
-Press `Win+R`, run `shell:startup`, and create a shortcut to `gromak.exe` in
-that folder.
+To build the installer yourself, install
+[Inno Setup 6](https://jrsoftware.org/isinfo.php)
+(`winget install JRSoftware.InnoSetup`) and run
+`powershell -File installer\build.ps1`. The installer, the portable exe and
+the checksums end up in `target\installer\`.
 
 ## Default keybindings
 

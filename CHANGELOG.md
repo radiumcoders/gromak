@@ -68,6 +68,9 @@ All notable changes to this project are documented here. The format follows
 - `gromak --quit` asks the running instance to exit cleanly.
 - Release builds are windowed apps: no console window flashes when gromak
   starts from the Start menu or at sign-in.
+- Installer (`gromak-<version>-setup.exe`, built with Inno Setup): per-user
+  install, Start menu entry, optional start at sign-in, uninstaller; plus a
+  portable exe. gromak.exe now has an icon and version information.
 
 ### Fixed
 
