@@ -863,7 +863,10 @@ impl Wm {
             let base = i * WORKSPACES;
             let workspaces = (0..WORKSPACES)
                 .map(|n| (n, base + n))
-                .filter(|&(_, w)| w == mon.ws || !self.workspaces[w].is_empty())
+                // The first few always; the rest only while active or occupied.
+                .filter(|&(n, w)| {
+                    n < self.cfg.bar.persistent_workspaces || w == mon.ws || !self.workspaces[w].is_empty()
+                })
                 .map(|(n, w)| WsItem { index: n, active: w == mon.ws, occupied: !self.workspaces[w].is_empty() })
                 .collect();
             // The focused window if it is here; otherwise the window last focused

@@ -88,6 +88,9 @@ corner_radius = 0
 show_title = true
 show_clock = true
 clock_24h = true
+# Workspaces 1 to this number always show on the bar; higher ones appear
+# while active or holding windows. 0 shows only those.
+persistent_workspaces = 5
 
 # Widgets, like waybar's modules: each list fills one part of the bar, in
 # order. Available:

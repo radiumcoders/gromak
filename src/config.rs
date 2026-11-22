@@ -146,6 +146,9 @@ pub struct Bar {
     pub show_title: bool,
     pub show_clock: bool,
     pub clock_24h: bool,
+    /// Workspaces 1 to this number always show on the bar; higher ones only
+    /// while active or holding windows.
+    pub persistent_workspaces: usize,
     /// The widgets in each part of the bar, in order (see [`Module`]).
     pub modules_left: Vec<String>,
     pub modules_center: Vec<String>,
@@ -428,6 +431,7 @@ impl Default for Bar {
             show_title: true,
             show_clock: true,
             clock_24h: true,
+            persistent_workspaces: 5,
             modules_left: vec!["workspaces".into()],
             modules_center: vec!["window".into()],
             modules_right: ["cpu", "memory", "volume", "network", "bluetooth", "clock"].map(String::from).to_vec(),
@@ -551,6 +555,9 @@ pub fn parse(text: &str) -> Result<Config, String> {
         }
     }
     cfg.bar.validate_modules()?;
+    if cfg.bar.persistent_workspaces > WORKSPACES {
+        return Err(format!("bar.persistent_workspaces must be 0-{WORKSPACES}, got {}", cfg.bar.persistent_workspaces));
+    }
     if !(0.0..=1.0).contains(&cfg.bar.opacity) {
         return Err(format!("bar.opacity must be between 0.0 and 1.0, got {}", cfg.bar.opacity));
     }
@@ -811,6 +818,8 @@ mod tests {
         assert_eq!(cfg.bar.custom["weather"].interval, 600);
         assert!(parse("[bar]\nmodules_left = [\"nope\"]").unwrap_err().contains("unknown module"));
         assert!(parse("[bar]\nmodules_left = [\"custom/x\"]").unwrap_err().contains("[bar.custom.x]"));
+        assert!(parse("[bar]\npersistent_workspaces = 11").unwrap_err().contains("persistent_workspaces"));
+        assert_eq!(parse("[bar]\npersistent_workspaces = 0").unwrap().bar.persistent_workspaces, 0);
         let hidden = parse("[bar]\nshow_clock = false").unwrap();
         assert!(!hidden.bar.modules()[2].contains(&Module::Clock));
     }
