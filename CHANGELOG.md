@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-22
+
 ### Added
 
 - Dwindle tiling layout with inner and outer gaps.
@@ -93,3 +95,6 @@ All notable changes to this project are documented here. The format follows
   blocked too.
 - gromak crashed on exit (after its cleanup had run) because graphics
   objects were released during process teardown.
+
+[Unreleased]: https://github.com/radiumcoders/gromak/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/radiumcoders/gromak/releases/tag/v0.1.0
