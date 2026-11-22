@@ -220,7 +220,7 @@ fn run_cli(args: &[String]) -> i32 {
                 return 1;
             }
             println!("restored {} window(s)", wm::recover_hidden());
-            snap::restore();
+            snap::restore_all();
         }
         other => {
             eprintln!("unknown argument: {other}\n\n{USAGE}");
@@ -311,9 +311,9 @@ unsafe extern "system" fn ctrl_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
         }
         WM_ENDSESSION if wp != 0 => {
             // Logging off or shutting down: make sure no window stays hidden
-            // and Windows Snap is back the way it was.
+            // and Windows Snap and window shadows are back the way they were.
             wm::restore_hidden();
-            snap::restore();
+            snap::restore_all();
             0
         }
         // These are normally taken off the queue by the main loop without

@@ -215,9 +215,10 @@ impl Wm {
     pub fn shutdown(&mut self) {
         self.unregister_hotkeys();
         hidden::restore_all();
-        crate::snap::restore();
+        crate::snap::restore_all();
         for &h in self.windows.keys() {
             win::set_border_color(h, win::BORDER_DEFAULT);
+            win::set_square_corners(h, false);
             win::set_transitions_disabled(h, false);
         }
         self.monitors.clear();
@@ -296,6 +297,7 @@ impl Wm {
                 (true, false) => self.inactive_border,
             };
             win::set_border_color(h, color);
+            win::set_square_corners(h, self.cfg.decoration.square_corners);
         }
     }
 
@@ -312,9 +314,14 @@ impl Wm {
 
     fn apply_snap(&self) {
         if self.cfg.general.disable_snap {
-            crate::snap::disable();
+            crate::snap::SNAP.disable();
         } else {
-            crate::snap::restore();
+            crate::snap::SNAP.restore();
+        }
+        if self.cfg.general.window_shadows {
+            crate::snap::SHADOWS.restore();
+        } else {
+            crate::snap::SHADOWS.disable();
         }
     }
 
@@ -617,6 +624,9 @@ impl Wm {
         if self.cfg.decoration.borders {
             win::set_border_color(h, self.inactive_border);
         }
+        if self.cfg.decoration.square_corners {
+            win::set_square_corners(h, true);
+        }
         // No DWM scale-and-fade every time a workspace switch hides or shows it.
         win::set_transitions_disabled(h, true);
         if self.monitor_of_ws(ws).is_none() {
@@ -644,6 +654,7 @@ impl Wm {
         }
         if win::is_window(h) {
             win::set_border_color(h, win::BORDER_DEFAULT);
+            win::set_square_corners(h, false);
             win::set_transitions_disabled(h, false);
         }
         self.move_start.remove(&h);

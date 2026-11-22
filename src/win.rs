@@ -772,6 +772,22 @@ pub fn set_transitions_disabled(h: Hwnd, disabled: bool) {
     }
 }
 
+/// Asks DWM for square (`true`) or Windows 11's default rounded corners on
+/// a window. Works on other processes' windows, like the border colour.
+pub fn set_square_corners(h: Hwnd, square: bool) {
+    const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
+    // DWMWCP_DONOTROUND, DWMWCP_DEFAULT.
+    let value: u32 = if square { 1 } else { 0 };
+    unsafe {
+        DwmSetWindowAttribute(
+            hw(h),
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &value as *const u32 as *const c_void,
+            size_of::<u32>() as u32,
+        );
+    }
+}
+
 /// The desktop or taskbar (or no window at all): places focus can rest
 /// without belonging to an application.
 pub fn is_shell_surface(h: Hwnd) -> bool {

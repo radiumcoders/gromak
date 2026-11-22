@@ -106,12 +106,17 @@ pub struct General {
     /// Turn Windows' own snapping (edge snap, Snap Layouts, Snap Assist) off
     /// while gromak runs.
     pub disable_snap: bool,
+    /// Windows' shadows under windows ("Show shadows under windows"). Off
+    /// while gromak runs unless this is set.
+    pub window_shadows: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Decoration {
     pub borders: bool,
+    /// Square corners on managed windows instead of Windows 11's rounded ones.
+    pub square_corners: bool,
     pub active_border: String,
     pub inactive_border: String,
 }
@@ -388,13 +393,19 @@ impl Default for General {
             start_menu: StartMenu::Tap,
             mouse_drag: true,
             disable_snap: true,
+            window_shadows: false,
         }
     }
 }
 
 impl Default for Decoration {
     fn default() -> Self {
-        Decoration { borders: true, active_border: "#8aadf4".into(), inactive_border: "#363a4f".into() }
+        Decoration {
+            borders: true,
+            square_corners: true,
+            active_border: "#8aadf4".into(),
+            inactive_border: "#363a4f".into(),
+        }
     }
 }
 
@@ -412,7 +423,7 @@ impl Default for Bar {
             foreground: "#cad3f5".into(),
             accent: "#8aadf4".into(),
             muted: "#5b6078".into(),
-            opacity: 0.55,
+            opacity: 1.0,
             corner_radius: 0,
             show_title: true,
             show_clock: true,

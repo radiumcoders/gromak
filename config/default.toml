@@ -33,6 +33,10 @@ mouse_drag = true
 # Layouts flyout, Snap Assist) while gromak runs, so it cannot resize windows
 # behind the tiler's back. Your previous setting comes back when gromak exits.
 disable_snap = true
+# Windows' shadows under windows. gromak turns them off while it runs for a
+# flat look ("Show shadows under windows" in Performance Options) and puts
+# your setting back when it exits.
+window_shadows = false
 
 [theme]
 # Where colours come from:
@@ -48,6 +52,8 @@ mode = "auto"
 [decoration]
 # Colour the Windows 11 window border of the focused window.
 borders = true
+# Square window corners instead of Windows 11's rounded ones.
+square_corners = true
 # Used when theme.source = "manual".
 active_border = "#8aadf4"
 inactive_border = "#363a4f"
@@ -72,9 +78,9 @@ background = "#181926"
 foreground = "#cad3f5"
 accent = "#8aadf4"
 muted = "#5b6078"
-# Opacity of the bar background (0.0 - 1.0). With blur on, keep it low so
-# the blur shows through.
-opacity = 0.55
+# Opacity of the bar background (0.0 - 1.0). 1.0 is solid; lower it (and,
+# with style = "full", turn blur on) for a see-through bar.
+opacity = 1.0
 # 0: sharp, square corners everywhere (bar, panels, launcher), snapped to
 # whole pixels. Above 0: rounded corners; this is the islands' radius in
 # logical pixels.

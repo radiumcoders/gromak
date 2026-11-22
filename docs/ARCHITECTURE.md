@@ -80,7 +80,8 @@ Hiding windows is risky: if gromak died, they would be invisible. So:
    are shown again. A window is only shown if its handle still exists and its
    class matches, so a recycled handle is never touched.
 
-Windows Snap (`snap.rs`) gets the same treatment. `SPI_SETWINARRANGEMENT` is
+Windows Snap (`snap.rs`) gets the same treatment. So do window shadows (`SPI_SETDROPSHADOW`): both are
+system-wide on/off settings handled by the same `snap::Setting` code. `SPI_SETWINARRANGEMENT` is
 system-wide and persistent, so before turning it off gromak writes the
 original value to `%LOCALAPPDATA%\gromak\snap.txt`. Exit, logoff and
 `--restore` put it back from that file and delete it. A start that finds the

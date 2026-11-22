@@ -29,6 +29,13 @@ All notable changes to this project are documented here. The format follows
   panels, buttons, switches, launcher), with surfaces snapped to whole pixels
   and exact 1 px borders. Text renders with higher contrast. Set
   `corner_radius` above 0 for rounded corners.
+- The bar is solid by default (`opacity = 1.0`) and drawn as floating islands.
+- Square corners on managed windows (`decoration.square_corners`, on by
+  default), restored when gromak stops managing a window or exits.
+- Window shadows are turned off while gromak runs (`general.window_shadows =
+  false`, the default). Like Snap, the original setting is recorded in
+  `%LOCALAPPDATA%gromak` and put back on exit, logoff, the next start
+  after a crash, or `gromak --restore`.
 
 ## [0.1.0] - 2026-11-22
 
