@@ -611,6 +611,37 @@ pub fn run_command(command: &str) -> std::io::Result<()> {
         .map(|_| ())
 }
 
+/// Starts a program, document or URI without activating it (where the app
+/// honours that) and returns its process id (0 when an already-running
+/// process handled it, as with most URIs).
+pub fn shell_launch(file: &str, params: &str, cwd: Option<&str>) -> Result<u32, String> {
+    use windows_sys::Win32::System::Threading::GetProcessId;
+    use windows_sys::Win32::UI::Shell::{
+        ShellExecuteExW, SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
+    };
+    let (verb, file_w, params_w) = (wide("open"), wide(file), wide(params));
+    let cwd_w = cwd.map(wide);
+    let mut info: SHELLEXECUTEINFOW = unsafe { zeroed() };
+    info.cbSize = size_of::<SHELLEXECUTEINFOW>() as u32;
+    info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI | SEE_MASK_NOASYNC;
+    info.lpVerb = verb.as_ptr();
+    info.lpFile = file_w.as_ptr();
+    info.lpParameters = if params.is_empty() { null() } else { params_w.as_ptr() };
+    info.lpDirectory = cwd_w.as_ref().map_or(null(), |c| c.as_ptr());
+    info.nShow = SW_SHOWNOACTIVATE;
+    if unsafe { ShellExecuteExW(&mut info) } == 0 {
+        return Err(format!("could not start {file}: {}", std::io::Error::last_os_error()));
+    }
+    let mut pid = 0;
+    if !info.hProcess.is_null() {
+        unsafe {
+            pid = GetProcessId(info.hProcess);
+            CloseHandle(info.hProcess);
+        }
+    }
+    Ok(pid)
+}
+
 /// Opens a file, folder or URI (`ms-settings:…`) with its default handler.
 pub fn shell_open(target: &str) {
     use windows_sys::Win32::UI::Shell::ShellExecuteW;

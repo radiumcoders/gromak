@@ -38,6 +38,9 @@ ordinary `SetWindowPos` / `ShowWindow` calls.
 | `src/sys.rs` | CPU and memory usage sampling and history. |
 | `src/audio.rs` | Default speaker volume and mute through Core Audio. |
 | `src/custom.rs` | `custom/*` widgets: run their commands on background threads and keep the output. |
+| `src/agent.rs` | The local named pipe between `gromak mcp` and the running gromak; hands requests to the main thread. |
+| `src/mcp.rs` | `gromak mcp`: the MCP server (JSON-RPC over stdio) for AI agents. |
+| `src/wm/agents.rs` | Agent workspaces: monitor names, claiming, launching, parking windows off-screen, focus guarding. |
 | `src/theme.rs` | Derives colour palettes from the wallpaper or accent colour, and detects changes. |
 | `src/win.rs` | Thin wrappers over the Win32 / DWM APIs, plus the "is this a normal app window?" heuristic. |
 | `src/log.rs` | File and stderr logger. |
@@ -279,3 +282,39 @@ range when location services are on. Without them, the panel shows the
 connected network (from its connection profile) and a button to the location
 settings. Windows has no public API for connecting a paired Bluetooth device,
 so the Bluetooth panel lists devices but leaves connecting to Settings.
+
+## Agent workspaces and MCP
+
+`gromak mcp` is a separate, short-lived process started by an agent's MCP
+client. It speaks newline-delimited JSON-RPC (MCP) on stdio and forwards each
+tool call as one JSON line over `\.\pipe\gromak-<session>` to the running
+gromak (`src/agent.rs`). The pipe thread hands requests to the main thread
+with `WM_APP_AGENT`, so `Wm` still only runs on one thread. A launch waits for
+the new app's windows on the pipe thread, polling the main thread, so the
+window manager is never blocked.
+
+Agent workspaces (`src/wm/agents.rs`) differ from others in one way: while no
+monitor shows one, its windows are *parked*, moved just past the right edge
+of the desktop with their tiled sizes, instead of hidden with `SW_HIDE`.
+Hidden windows disappear from UI Automation, so agent-desktop could not drive
+them; parked windows keep painting and answering. Everywhere gromak would
+hide a window of a workspace that is not shown, `conceal` parks it instead
+when the workspace belongs to an agent, and switching to the workspace
+unparks it.
+
+Windows reach an agent workspace by launch: `gromak_launch` starts the
+program with `ShellExecuteEx` and records its process id and executable name
+for 20 seconds. New windows of that process or program go to the agent, and
+so do dialogs owned by agent windows. Store apps start through a stub whose
+window belongs to `ApplicationFrameHost.exe`, so if the launch has not shown a
+window of its own within 5 seconds, the next new window is taken as its own.
+
+gromak never follows focus to a parked window. `guard_focus` runs on every
+foreground event (looking at the real foreground window, since Store apps
+report a child window) and on the 5-second theme timer. If a parked window
+has the foreground, focus goes back to the user's window.
+
+Parked windows are visible, so they are not in `hidden.txt`. On exit they are
+put back on their monitor. After a crash, the next start (and
+`gromak --restore`) moves any manageable window lying entirely off every
+monitor back onto the primary monitor (`rescue_offscreen`).

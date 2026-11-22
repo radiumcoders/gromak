@@ -10,6 +10,7 @@
 
 #[macro_use]
 mod log;
+mod agent;
 mod audio;
 mod bar;
 mod calc;
@@ -22,6 +23,7 @@ mod icons;
 mod keyboard;
 mod launcher;
 mod layout;
+mod mcp;
 mod mouse;
 mod orc;
 mod panel;
@@ -64,6 +66,8 @@ pub const WM_APP_MOUSE: u32 = WM_APP + 7;
 pub const WM_APP_DRAG: u32 = WM_APP + 8;
 /// A window-animation frame is due.
 pub const WM_APP_ANIM: u32 = WM_APP + 9;
+/// An agent request from the pipe thread: `lparam` is a `Box<agent::Call>`.
+pub const WM_APP_AGENT: u32 = WM_APP + 10;
 /// Timer on the control window that drives window animations.
 pub const ANIM_TIMER: usize = 2;
 
@@ -100,6 +104,12 @@ pub fn post_to_ctrl(msg: u32, wparam: usize, lparam: isize) {
     }
 }
 
+/// Like [`post_to_ctrl`], but reports whether the message was posted.
+pub fn post_to_ctrl_checked(msg: u32, wparam: usize, lparam: isize) -> bool {
+    let ctrl = CTRL_HWND.load(Ordering::Relaxed);
+    ctrl != 0 && unsafe { PostMessageW(ctrl as HWND, msg, wparam, lparam) } != 0
+}
+
 const USAGE: &str = "\
 gromak - a minimal tiling window manager for Windows
 
@@ -110,6 +120,8 @@ USAGE:
     gromak --config-path    print where the config file lives
     gromak --default-config print the default config
     gromak --quit           ask the running gromak to exit cleanly
+    gromak mcp              serve the MCP tools that give AI agents a workspace
+                            (stdio; add it to your agent's MCP servers)
     gromak --restore        undo what a crashed session left behind
                             (hidden windows, Windows Snap turned off);
                             refuses while gromak runs (add --force)
@@ -119,6 +131,11 @@ USAGE:
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // The MCP server talks JSON over the stdio pipes its client gave it; it
+    // must not attach to a console.
+    if args.first().map(String::as_str) == Some("mcp") {
+        std::process::exit(mcp::run());
+    }
     if !args.is_empty() {
         attach_parent_console();
         std::process::exit(run_cli(&args));
@@ -140,6 +157,10 @@ fn main() {
     if restored > 0 {
         warn!("showed {restored} window(s) left hidden by a previous session");
     }
+    let rescued = wm::rescue_offscreen();
+    if rescued > 0 {
+        warn!("moved {rescued} window(s) left off-screen by a previous session back on screen");
+    }
     let (cfg, cfg_error) = match config::load() {
         Ok(cfg) => (cfg, None),
         Err(e) => {
@@ -158,6 +179,7 @@ fn main() {
         return;
     }
     CTRL_HWND.store(ctrl, Ordering::Relaxed);
+    agent::start();
     unsafe { SetTimer(ctrl as HWND, THEME_TIMER, THEME_CHECK_MS, None) };
     let hooks = install_hooks();
     keyboard::start();
@@ -219,7 +241,7 @@ fn run_cli(args: &[String]) -> i32 {
                 eprintln!("gromak is running; exit it first (or pass --restore --force)");
                 return 1;
             }
-            println!("restored {} window(s)", wm::recover_hidden());
+            println!("restored {} window(s)", wm::recover_hidden() + wm::rescue_offscreen());
             snap::restore_all();
         }
         other => {
@@ -321,7 +343,7 @@ unsafe extern "system" fn ctrl_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
         // dispatched one here, put it back for the main loop instead of
         // dropping it.
         WM_HOTKEY | WM_APP_HOTKEY | WM_APP_EVENT | WM_APP_DISPLAY | WM_APP_BAR | WM_APP_THEME | WM_APP_MOUSE
-        | WM_APP_DRAG | WM_APP_ANIM | WM_APP_QUIT => {
+        | WM_APP_DRAG | WM_APP_ANIM | WM_APP_AGENT | WM_APP_QUIT => {
             PostMessageW(hwnd, msg, wp, lp);
             0
         }
@@ -435,6 +457,7 @@ fn run_message_loop(wm: &mut wm::Wm) {
                 | WM_APP_MOUSE
                 | WM_APP_DRAG
                 | WM_APP_ANIM
+                | WM_APP_AGENT
         );
         if !handled {
             unsafe {
@@ -456,6 +479,13 @@ fn run_message_loop(wm: &mut wm::Wm) {
                 wm.on_mouse_move();
             }
             WM_APP_ANIM => wm.on_anim_tick(),
+            WM_APP_AGENT => {
+                // Take ownership first, so the reply channel closes even if
+                // the handler panics.
+                let call = unsafe { Box::from_raw(m.lParam as *mut agent::Call) };
+                let reply = wm.on_agent(&call.request);
+                let _ = call.reply.send(reply);
+            }
             WM_APP_DRAG => {
                 if m.wParam == mouse::DRAG_PHASE_MOVE {
                     mouse::drag_handled();

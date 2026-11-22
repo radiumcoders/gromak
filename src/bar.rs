@@ -90,6 +90,8 @@ pub struct WsItem {
     pub active: bool,
     /// Has at least one window.
     pub occupied: bool,
+    /// Claimed by an AI agent (see `gromak mcp`).
+    pub agent: bool,
 }
 
 /// Everything the bar shows, pushed by the window manager.
@@ -943,7 +945,9 @@ unsafe fn draw(f: &Factories, model: &mut Model) -> windows::core::Result<()> {
                                     rgba(style.foreground, 0.12),
                                 );
                             }
-                            if item.occupied {
+                            if item.agent {
+                                rgba(style.accent, 1.0)
+                            } else if item.occupied {
                                 rgba(style.foreground, 0.9)
                             } else {
                                 rgba(style.muted, 1.0)

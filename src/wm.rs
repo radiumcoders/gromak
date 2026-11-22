@@ -9,6 +9,9 @@
 //! windows are tracked in [`hidden`] and persisted to disk so they can be
 //! restored after a crash.
 
+mod agents;
+pub use agents::rescue_offscreen;
+
 use crate::bar::{Bar, BarState, Style, WsItem};
 use crate::config::{
     self, BarStyle, Bind, Command, Config, FsMode, ThemeMode, ThemeSource, WsTarget, MOD_ALT, MOD_WIN, VK_WHEEL_DOWN,
@@ -21,7 +24,7 @@ use crate::mouse;
 use crate::popup;
 use crate::theme::{self, Palette};
 use crate::win::{self, Hwnd};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::{Duration, Instant};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey, MOD_NOREPEAT};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -155,6 +158,10 @@ pub struct Wm {
     /// Fingerprint of the inputs `palette` was derived from.
     theme_signature: String,
     elevated: bool,
+    /// Workspaces claimed by AI agents (index -> agent name); see [`agents`].
+    agents: BTreeMap<usize, String>,
+    /// Programs agents launched, whose windows go to their workspaces.
+    pending: Vec<agents::PendingLaunch>,
 }
 
 impl Wm {
@@ -180,6 +187,8 @@ impl Wm {
             palette: theme::palette_from_seed([0x8a, 0xad, 0xf4], false),
             theme_signature: String::new(),
             elevated: win::self_elevated(),
+            agents: BTreeMap::new(),
+            pending: Vec::new(),
         };
         wm.load_colors();
         wm
@@ -214,6 +223,11 @@ impl Wm {
     /// Restores everything to how Windows had it.
     pub fn shutdown(&mut self) {
         self.unregister_hotkeys();
+        for ws in self.agents.keys().copied().collect::<Vec<_>>() {
+            if self.monitor_of_ws(ws).is_none() {
+                self.unpark_ws(ws);
+            }
+        }
         hidden::restore_all();
         crate::snap::restore_all();
         for &h in self.windows.keys() {
@@ -277,6 +291,8 @@ impl Wm {
     /// Re-derives the colours if the wallpaper, accent colour or light/dark
     /// mode changed since the last time. Cheap when nothing changed.
     pub fn on_theme_check(&mut self) {
+        // Also every few seconds, in case an event slipped through.
+        self.guard_focus();
         if self.cfg.theme.source == ThemeSource::Manual || theme::signature() == self.theme_signature {
             return;
         }
@@ -485,6 +501,10 @@ impl Wm {
     fn sync_visibility(&mut self) {
         for ws in 0..self.workspaces.len() {
             let shown = self.monitor_of_ws(ws).is_some();
+            if !shown && self.is_agent(ws) {
+                self.park_ws(ws);
+                continue;
+            }
             for h in self.workspaces[ws].windows() {
                 if shown && hidden::contains(h) {
                     hidden::show(h);
@@ -601,19 +621,20 @@ impl Wm {
         }
         let mut floating = info.has_owner || !info.resizable;
         let mut ws = ws_hint;
+        let agent_ws = self.agent_ws_for(&info, h);
         for rule in self.cfg.rules.iter().filter(|r| r.matches(&info.exe, &info.class, &info.title)) {
             if rule.ignore {
                 self.ignored.insert(h);
                 return false;
             }
             floating |= rule.float;
-            if let Some(n) = rule.workspace {
+            if let (Some(n), None) = (rule.workspace, agent_ws) {
                 // Workspace n of the monitor the window opened on.
                 let mi = ws.map_or(self.active_monitor, |w| w / WORKSPACES);
                 ws = Some(mi * WORKSPACES + n - 1);
             }
         }
-        let ws = ws.unwrap_or_else(|| self.current_ws());
+        let ws = agent_ws.or(ws).unwrap_or_else(|| self.current_ws());
         self.windows.insert(h, Managed { ws, floating });
         if floating {
             self.workspaces[ws].floating.push(h);
@@ -630,7 +651,7 @@ impl Wm {
         // No DWM scale-and-fade every time a workspace switch hides or shows it.
         win::set_transitions_disabled(h, true);
         if self.monitor_of_ws(ws).is_none() {
-            hidden::hide(h);
+            self.conceal(h, ws);
         }
         info!(
             "manage {h:#x} {} [{}] \"{}\" -> workspace {} on monitor {}{}",
@@ -696,7 +717,12 @@ impl Wm {
 
     /// Applies the layout of a workspace if it is visible.
     fn layout_ws(&self, ws: usize) {
-        let Some(mi) = self.monitor_of_ws(ws) else { return };
+        let Some(mi) = self.monitor_of_ws(ws) else {
+            if self.is_agent(ws) {
+                self.park_ws(ws);
+            }
+            return;
+        };
         let (area, gap) = (self.tiling_area(mi), self.gap(mi));
         let workspace = &self.workspaces[ws];
         let fullscreen = workspace.fullscreen;
@@ -865,9 +891,17 @@ impl Wm {
                 .map(|n| (n, base + n))
                 // The first few always; the rest only while active or occupied.
                 .filter(|&(n, w)| {
-                    n < self.cfg.bar.persistent_workspaces || w == mon.ws || !self.workspaces[w].is_empty()
+                    n < self.cfg.bar.persistent_workspaces
+                        || w == mon.ws
+                        || !self.workspaces[w].is_empty()
+                        || self.is_agent(w)
                 })
-                .map(|(n, w)| WsItem { index: n, active: w == mon.ws, occupied: !self.workspaces[w].is_empty() })
+                .map(|(n, w)| WsItem {
+                    index: n,
+                    active: w == mon.ws,
+                    occupied: !self.workspaces[w].is_empty(),
+                    agent: self.is_agent(w),
+                })
                 .collect();
             // The focused window if it is here; otherwise the window last focused
             // on this monitor's workspace, so the title does not vanish when
@@ -913,6 +947,10 @@ impl Wm {
                 win::set_window_rect(f, area.centered(r.w.min(area.w), r.h.min(area.h)));
             }
         }
+        // An agent workspace's windows are parked off-screen: bring them back.
+        if self.is_agent(target) {
+            self.unpark_ws(target);
+        }
         // Slide in: park the incoming tiles slightly to the side (further
         // right when moving to a higher workspace) while they are hidden;
         // layout_ws then glides them into place once they are shown.
@@ -937,8 +975,12 @@ impl Wm {
                 win::raise(f);
             }
         }
-        for h in self.workspaces[old].windows() {
-            hidden::hide(h);
+        if self.is_agent(old) {
+            self.park_ws(old);
+        } else {
+            for h in self.workspaces[old].windows() {
+                hidden::hide(h);
+            }
         }
         self.focus_in_ws(target);
     }
@@ -958,7 +1000,7 @@ impl Wm {
             }
             self.layout_ws(target);
         } else if !follow {
-            hidden::hide(h);
+            self.conceal(h, target);
         }
         self.layout_ws(src);
         if follow {
@@ -1138,7 +1180,7 @@ impl Wm {
                 if self.monitor_of_ws(target).is_some() {
                     self.layout_ws(target);
                 } else {
-                    hidden::hide(h);
+                    self.conceal(h, target);
                     self.set_focused(None);
                     self.focus_in_ws(src);
                 }
@@ -1442,7 +1484,9 @@ impl Wm {
         if self.manage(h, None) {
             let ws = self.windows[&h].ws;
             self.layout_ws(ws);
-            if win::foreground() == h {
+            if win::foreground() == h && self.is_agent(ws) && self.monitor_of_ws(ws).is_none() {
+                self.refocus_user(h);
+            } else if win::foreground() == h {
                 self.set_focused(Some(h));
                 self.warp_pointer_to(h);
             }
@@ -1460,6 +1504,12 @@ impl Wm {
             self.manage_and_layout(h);
             return;
         };
+        if self.monitor_of_ws(ws).is_none() && self.is_agent(ws) {
+            // An agent's app showed a window: keep it parked.
+            hidden::forget(h);
+            self.park_ws(ws);
+            return;
+        }
         if self.monitor_of_ws(ws).is_none() && win::is_visible(h) {
             // The app re-showed a window on a hidden workspace (e.g. restored
             // from its tray icon): follow it there.
@@ -1488,6 +1538,12 @@ impl Wm {
     }
 
     fn on_foreground(&mut self, h: Hwnd) {
+        // Before anything else: an agent's parked window must never keep the
+        // user's focus. Store apps report a child window here, so look at
+        // the real foreground window, not only the event's.
+        if self.guard_focus() {
+            return;
+        }
         if win::foreground() != h {
             return; // stale event
         }
@@ -1496,6 +1552,11 @@ impl Wm {
             return;
         }
         let ws = self.windows[&h].ws;
+        if self.monitor_of_ws(ws).is_none() && self.is_agent(ws) {
+            // Never follow an agent's app: the user keeps their focus.
+            self.refocus_user(h);
+            return;
+        }
         if self.monitor_of_ws(ws).is_none() {
             // Activated while on a hidden workspace: bring that workspace up.
             self.workspaces[ws].last_focus = Some(h);

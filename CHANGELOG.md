@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Workspaces for AI agents. `gromak mcp` is an MCP server (stdio) with tools to
+  list monitors by name ("top", "bottom", "left", "right", "primary"), claim a
+  workspace, launch apps onto it, list, move and close its windows, and
+  release it. Pair it with Vercel's agent-desktop to operate the apps. While
+  not shown, an agent workspace's windows are parked off-screen instead of
+  hidden, so they stay drivable through UI Automation, and they never keep
+  the user's focus. Agent workspaces are marked on the bar.
+- `gromak --restore` and every start also bring back windows a crash left
+  off-screen.
+
 ## [0.2.0] - 2026-11-22
 
 ### Added

@@ -57,6 +57,10 @@ window, and nothing else.
 - **Focus borders.** Uses Windows 11's native DWM window borders.
 - **Window rules.** Float, ignore, or pin windows to workspaces by exe, class, or title.
 - **Multi-monitor and per-monitor DPI aware.** Gaps and the bar scale with each display.
+- **Workspaces for AI agents.** `gromak mcp` lets an agent claim a workspace
+  on the monitor you name and work there through
+  [agent-desktop](https://github.com/vercel-labs/agent-desktop) without
+  touching your mouse, keyboard focus or screen. See [AI agents](#ai-agents-mcp).
 - **Safe.** Hidden windows are tracked on disk and restored on exit, logoff,
   crash recovery, or `gromak --restore`. No DLL injection and no admin rights required.
 - **Small.** A single executable of about 2.3 MB, fonts included, with no runtime dependencies.
@@ -379,6 +383,63 @@ you could write a rule for.
 | `reload` | Reload the config |
 | `exit` | Quit, restoring every window |
 
+## AI agents (MCP)
+
+gromak can give an AI agent ("clanker") a workspace of its own, so it can use
+desktop apps while you keep working. `gromak mcp` is a
+[Model Context Protocol](https://modelcontextprotocol.io) server. Pair it with
+Vercel's [agent-desktop](https://github.com/vercel-labs/agent-desktop), which
+operates apps through UI Automation, without the mouse or your keyboard focus:
+
+- **gromak** gives the agent a workspace on the monitor you name ("top",
+  "bottom", "left", "right", "primary" or a number), starts apps there, and
+  lists their windows.
+- **agent-desktop** reads and operates those windows: snapshots, clicks,
+  filling in fields, screenshots.
+
+While you look at another workspace, the agent's windows are moved just
+off-screen rather than hidden: they keep running and can still be driven,
+but you never see them and they never take your focus. If one tries, gromak
+gives focus straight back to your window. To watch the agent, switch to its
+workspace like any other; its number is drawn in the accent colour on the bar.
+
+### Setup
+
+```powershell
+npm install -g agent-desktop
+claude mcp add gromak -- "$env:LOCALAPPDATA\Programs\gromak\gromak.exe" mcp
+claude mcp add agent-desktop -- cmd /c agent-desktop mcp
+```
+
+Other MCP clients take the same two servers as JSON:
+
+```json
+{
+  "mcpServers": {
+    "gromak": { "command": "C:\Users\you\AppData\Local\Programs\gromak\gromak.exe", "args": ["mcp"] },
+    "agent-desktop": { "command": "cmd", "args": ["/c", "agent-desktop", "mcp"] }
+  }
+}
+```
+
+gromak must be running. Then ask the agent things like *"on the bottom
+monitor, open Calculator and work out 7 + 2"*. The tools are
+`gromak_monitors`, `gromak_claim_workspace`, `gromak_launch`,
+`gromak_windows`, `gromak_move_window`, `gromak_close_window` and
+`gromak_release_workspace`. gromak's MCP instructions tell the agent to stay
+headless in agent-desktop (no `--headed`, `focus-window`, `type`, `press` or
+mouse commands), since those would act on your screen.
+
+Things to know:
+
+- Store apps such as Calculator start through a helper process. For a few
+  seconds after such a launch, the next new window counts as the app's, so a
+  window you open in that moment could end up on the agent's workspace.
+- Parked windows still appear in Alt+Tab. Picking one sends focus back to
+  your window; switch to the agent's workspace to look at it.
+- gromak listens on a local named pipe. Remote machines are refused, and only
+  programs running as you (or as an administrator) can send it requests.
+
 ## Command line
 
 ```
@@ -388,8 +449,10 @@ gromak --check-config   validate the config file
 gromak --config-path    print where the config file lives
 gromak --default-config print the default config
 gromak --quit           exit the running gromak cleanly (like mod+shift+e)
+gromak mcp              serve the MCP tools that give AI agents a workspace
 gromak --restore        undo what a crashed session left behind
-                        (hidden windows, Windows Snap turned off)
+                        (hidden windows, off-screen windows, Windows Snap
+                        and window shadows turned off)
 gromak --version
 gromak --help
 ```
@@ -426,8 +489,8 @@ clipboard history or Win+N for notifications, remove or rebind that line in
 - Resizing tiles by dragging their edges
 - Per-workspace layouts (master/stack, monocle)
 - Named and persistent workspaces, scratchpad
-- IPC and a `gromak msg` command for scripting
-- Bar modules (battery, volume, network, media)
+- A `gromak msg` command for scripting (the agent pipe is a start)
+- More bar modules (battery)
 
 ## Building and contributing
 

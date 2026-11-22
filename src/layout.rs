@@ -33,6 +33,11 @@ impl Rect {
         px >= self.x && px < self.right() && py >= self.y && py < self.bottom()
     }
 
+    /// Whether the two rectangles overlap at all.
+    pub fn intersects(&self, o: &Rect) -> bool {
+        self.x < o.right() && o.x < self.right() && self.y < o.bottom() && o.y < self.bottom()
+    }
+
     /// Shrinks the rectangle by `n` pixels on every side.
     pub fn inset(&self, n: i32) -> Rect {
         Rect::new(self.x + n, self.y + n, (self.w - 2 * n).max(0), (self.h - 2 * n).max(0))
