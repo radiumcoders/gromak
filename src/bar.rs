@@ -647,13 +647,13 @@ impl Metrics {
         Metrics {
             s,
             h,
-            inner: (13.0 * s).round(),
-            gap: (14.0 * s).round(),
+            inner: (20.0 * s).round(),
+            gap: (22.0 * s).round(),
             pad,
             pill_h: h - 2.0 * pad,
             glyph: (15.0 * s).round(),
-            glyph_gap: (6.0 * s).round(),
-            hover_pad: (6.0 * s).round(),
+            glyph_gap: (8.0 * s).round(),
+            hover_pad: (8.0 * s).round(),
         }
     }
 }
