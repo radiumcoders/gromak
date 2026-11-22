@@ -223,9 +223,9 @@ impl Module {
 #[serde(rename_all = "lowercase")]
 pub enum BarStyle {
     /// One strip across the top of the monitor, edge to edge.
-    #[default]
     Full,
-    /// Floating rounded islands with gaps around them.
+    /// Floating islands (one per widget group) with gaps around them.
+    #[default]
     Islands,
 }
 
@@ -402,7 +402,7 @@ impl Default for Bar {
     fn default() -> Self {
         Bar {
             enabled: true,
-            style: BarStyle::Full,
+            style: BarStyle::Islands,
             blur: true,
             height: 26,
             font: "Goeist".into(),

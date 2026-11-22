@@ -57,9 +57,9 @@ inactive_border = "#363a4f"
 # are built in: Goeist and Goeist Mono. Either can also be an installed
 # family or a .ttf/.otf file in this folder, e.g. font = "fonts/MyFont.ttf".
 enabled = true
-# "full": one strip across the top, edge to edge. "islands": floating rounded
-# islands with gaps around them.
-style = "full"
+# "islands": floating islands, one per widget group, with gaps around them.
+# "full": one strip across the top, edge to edge.
+style = "islands"
 # Blur what is behind the bar, like frosted glass (full style only).
 blur = true
 # Height in logical pixels (scaled with the monitor's DPI).

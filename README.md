@@ -193,7 +193,7 @@ inactive_border = "#363a4f"
 
 [bar]
 enabled = true
-style = "full"          # or "islands"
+style = "islands"       # or "full"
 blur = true             # frosted-glass backdrop (full style)
 height = 26
 opacity = 0.55       # background opacity, 0.0 - 1.0
