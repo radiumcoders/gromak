@@ -638,6 +638,8 @@ struct Metrics {
     glyph_gap: f32,
     /// How far a widget's hover highlight reaches past its content.
     hover_pad: f32,
+    /// Space between a hover highlight and the top and bottom of the bar.
+    hover_inset: f32,
 }
 
 impl Metrics {
@@ -648,12 +650,13 @@ impl Metrics {
             s,
             h,
             inner: (20.0 * s).round(),
-            gap: (22.0 * s).round(),
+            gap: (24.0 * s).round(),
             pad,
             pill_h: h - 2.0 * pad,
             glyph: (15.0 * s).round(),
             glyph_gap: (8.0 * s).round(),
-            hover_pad: (8.0 * s).round(),
+            hover_pad: (10.0 * s).round(),
+            hover_inset: (3.0 * s).round(),
         }
     }
 }
@@ -903,7 +906,10 @@ unsafe fn draw(f: &Factories, model: &mut Model) -> windows::core::Result<()> {
             let cy = h / 2.0;
             let hovered = |hit: &Hit| hover.as_ref() == Some(hit);
             let highlight = |l: f32, r: f32| {
-                fill(&rounded(l, m.pad, r, h - m.pad, (m.pill_h * 0.32).round()), rgba(style.foreground, 0.10));
+                fill(
+                    &rounded(l, m.hover_inset, r, h - m.hover_inset, (m.pill_h * 0.32).round()),
+                    rgba(style.foreground, 0.10),
+                );
             };
             match piece {
                 Piece::Workspaces => {
